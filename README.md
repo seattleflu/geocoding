@@ -1,4 +1,4 @@
-# Geocoding addresses into 2010 Census tracts
+# Geocoding addresses into 2016 Census tracts
 
 ## Data
 
@@ -13,8 +13,8 @@ Stored in the `data/` directory.
 * `omitted_states.txt` lists the _names_ of states we want to omit from
   downloads of census tracts, with reasons provided in comments.
 
-* `tracts/tl_2010_${state_fips_code}_tract10.{dbf,prj,shp,shp.xml,shx}` are the
-  2010 Census tract Shapefiles and supporting files for each state, as
+* `tracts/tl_2016_${state_fips_code}_tract.{dbf,prj,shp,shp.xml,shx}` are the
+  2016 Census tract Shapefiles and supporting files for each state, as
   described at <https://www.census.gov/geo/maps-data/data/tiger-line.html>.
   These are not checked into version control and must be downloaded locally by
   running `snakemake tracts`.

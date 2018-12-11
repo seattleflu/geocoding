@@ -19,30 +19,33 @@ with open("data/states.txt", encoding = "UTF-8") as file:
                     if line_number != 1)))
 
 
-# Download 2010 Census tracts for all states.
+# Download 2016 Census tracts for all states.
 rule tracts:
     input:
-        expand("data/tracts/tl_2010_{state.fips_code}_tract10.shp",
+        expand("data/tracts/tl_2016_{state.fips_code}_tract.shp",
             state = states)
 
 rule state_tracts:
     output:
-        temp("data/tracts/tl_2010_{state_code}_tract10.zip")
+        temp("data/tracts/tl_2016_{state_code}_tract.zip")
     shell:
         """
         wget -P data/tracts/ \
-             -N https://www2.census.gov/geo/tiger/TIGER2010/TRACT/2010/tl_2010_{wildcards.state_code:q}_tract10.zip
+             -N https://www2.census.gov/geo/tiger/TIGER2016/TRACT/tl_2016_{wildcards.state_code:q}_tract.zip
         """
 
 rule unpack_state_tracts:
     input:
         rules.state_tracts.output
     output:
-        "data/tracts/tl_2010_{state_code}_tract10.dbf",
-        "data/tracts/tl_2010_{state_code}_tract10.prj",
-        "data/tracts/tl_2010_{state_code}_tract10.shp",
-        "data/tracts/tl_2010_{state_code}_tract10.shp.xml",
-        "data/tracts/tl_2010_{state_code}_tract10.shx"
+        "data/tracts/tl_2016_{state_code}_tract.cpg",
+        "data/tracts/tl_2016_{state_code}_tract.dbf",
+        "data/tracts/tl_2016_{state_code}_tract.prj",
+        "data/tracts/tl_2016_{state_code}_tract.shp",
+        "data/tracts/tl_2016_{state_code}_tract.shp.xml",
+        "data/tracts/tl_2016_{state_code}_tract.shp.iso.xml",
+        "data/tracts/tl_2016_{state_code}_tract.shp.ea.iso.xml",
+        "data/tracts/tl_2016_{state_code}_tract.shx"
     shell:
         """
         unzip -u -d data/tracts/ {input:q}
