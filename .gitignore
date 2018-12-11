@@ -1,1 +1,4 @@
 /.snakemake/
+
+# Files containing API keys
+environment*
