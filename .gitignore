@@ -3,4 +3,7 @@
 # Files containing API keys
 environment*
 
+# GeoJSONs
+data/geojsons/*
+
 *.DS_Store
