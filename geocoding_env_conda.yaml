@@ -1,0 +1,10 @@
+name: geocoding
+channels:
+- conda-forge
+- bioconda
+- defaults
+dependencies:
+- geocoder
+- shapely
+- python=3.6*
+- snakemake
