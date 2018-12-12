@@ -28,12 +28,37 @@ def read_addresses(fname):
 
 def print_latlngs(addresses):
 	"""Print to screen all the lat/long values for a list of addresses."""
-	ltlngs = []
+	latlngs = []
 	for address in addresses:
-		ltlngs.append(address_to_latlng(address))
+		latlngs.append(address_to_latlng(address))
 
-	for ltlng in ltlngs:
-		print(ltlng)
+	for latlng in ltlngs:
+		print(latlng)
+
+def latlng_to_census_tract(latlng, geojson):
+	"""Convert a lat/long value to a census tract."""
+	import json
+	from shapely.geometry import shape, Point
+	# depending on your version, use: from shapely.geometry import shape, Point
+
+	# load GeoJSON file containing sectors
+	with open(geojson) as f:
+	    js = json.load(f)
+
+	# Trace for debugging
+	# import pdb; pdb.set_trace()
+
+	# construct point based on lon/lat returned by geocoder
+	x, y = latlng[0], latlng[1]
+	point = Point(x, y)
+	print(point)
+
+	# check each polygon to see if it contains the point
+	for feature in js['features']:
+		polygon = shape(feature['geometry'])
+		if polygon.contains(point):
+			print('Yay!')
+			# print('Found containing polygon:', feature)
 
 def address_to_latlng(address):
 	"""Convert an address string to a list of latitude, longitude coordinates.
@@ -45,6 +70,8 @@ def address_to_latlng(address):
 	g = geocoder.google(str(address))
 	l = g.latlng
 
+	print(l)
+
 	return l
 
 if __name__=='__main__':
@@ -53,4 +80,6 @@ if __name__=='__main__':
 	fn = 'data/test/testset.tsv'
 	adds = read_addresses(fn)
 	print('\n')
-	print_latlngs(adds)
+	llngs = [ address_to_latlng(address) for address in adds ]
+	for l in llngs:
+		latlng_to_census_tract(l, 'data/geojsons/Washington_2016.geojson')
