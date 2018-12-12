@@ -2,3 +2,5 @@
 
 # Files containing API keys
 environment*
+
+*.DS_Store
