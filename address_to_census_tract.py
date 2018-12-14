@@ -4,7 +4,7 @@ Takes a file containing a list of addresses, one per line, and returns their
 associated census tract within Seattle.
 
 To run:
-	python address_to_census_tract.py -i INPUT_FILE -o OUTPUT_FILE
+	python address_to_census_tract.py
 
 Requirements:
 
