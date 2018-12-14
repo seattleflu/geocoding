@@ -52,8 +52,32 @@ def print_latlngs(addresses):
 	for latlng in ltlngs:
 		print(latlng)
 
-def latlng_to_census_tract(latlng, geojson):
-	"""Convert a lat/long value to a census tract."""
+# def latlng_to_census_tract(latlng, geojson):
+# 	"""Convert a lat/long value to a census tract."""
+# 	### No longer in use. Replaced by better optimized `latlngs_to_census_tracts`
+# 	import json
+# 	from shapely.geometry import shape, Point
+# 	# depending on your version, use: from shapely.geometry import shape, Point
+#
+# 	# load GeoJSON file containing sectors
+# 	with open(geojson) as f:
+# 	    js = json.load(f)
+#
+# 	# construct point based on lon/lat returned by geocoder
+# 	x, y = latlng[0], latlng[1]
+# 	point = Point(y, x)
+# 	print(point)
+#
+# 	# check each polygon to see if it contains the point
+# 	for feature in js['features']:
+# 		polygon = shape(feature['geometry'])
+# 		if polygon.contains(point):
+# 			print("Found: ", feature['properties']['NAMELSAD'])
+# 			return feature['properties']['NAMELSAD']
+# 	return None
+
+def latlngs_to_census_tracts(latlngs, geojson):
+	"""Convert a lat/long list to a list of census tracts."""
 	import json
 	from shapely.geometry import shape, Point
 	# depending on your version, use: from shapely.geometry import shape, Point
@@ -62,20 +86,27 @@ def latlng_to_census_tract(latlng, geojson):
 	with open(geojson) as f:
 	    js = json.load(f)
 
-	# Trace for debugging
-	# import pdb; pdb.set_trace()
-
-	# construct point based on lon/lat returned by geocoder
-	x, y = latlng[0], latlng[1]
-	point = Point(x, y)
-	print(point)
-
-	# check each polygon to see if it contains the point
+	# Construct a map of unique identifiers to polygons
+	# In this case, unique identifires are a combination of STATE|COUNTY|TRACT
+	polygons = {}
 	for feature in js['features']:
-		polygon = shape(feature['geometry'])
-		if polygon.contains(point):
-			print('Yay!')
-			# print('Found containing polygon:', feature)
+		state_county_tract = "{}|{}|{}".format(feature['properties']['STATEFP'], feature['properties']['COUNTYFP'], feature['properties']['NAME'])
+		polygons[state_county_tract] = shape(feature['geometry'])
+
+	o = []
+
+	for latlng in latlngs:
+		# construct point based on lon/lat returned by geocoder
+		t = True
+		x, y = latlng[0], latlng[1]
+		point = Point(y, x)
+		for ct in polygons.keys():
+			if polygons[ct].contains(point):
+				t = False
+				o.append(ct.split('|')[2])
+		if t:
+			o.append(None)
+	return o
 
 def address_to_latlng(address):
 	"""Convert an address string to a list of latitude, longitude coordinates.
