@@ -26,6 +26,23 @@ def read_addresses(fname):
 	print("Successfully read in {} addresses.".format(len(addresses)))
 	return addresses
 
+def read_expected(fname):
+	"""Read in expected census tracts for easy comparisonself.
+
+	This function is not necessary for the conversion to work, it is just
+	helpful in bugfixing and testingself.
+	"""
+	exps = []
+	with open(fname, 'r') as f:
+		# Skip the first line
+		f.readline()
+		for line in f.readlines():
+			line = line.split('\t')
+			exp = line[1].strip()
+			exps.append(exp)
+	print("Successfully read in {} expected census tracts.".format(len(exps)))
+	return exps
+
 def print_latlngs(addresses):
 	"""Print to screen all the lat/long values for a list of addresses."""
 	latlngs = []
