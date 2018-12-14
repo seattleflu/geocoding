@@ -127,7 +127,16 @@ if __name__=='__main__':
 	print('\n')
 	fn = 'data/test/testset.tsv'
 	adds = read_addresses(fn)
+	exps = read_expected(fn)
 	print('\n')
 	llngs = [ address_to_latlng(address) for address in adds ]
-	for l in llngs:
-		latlng_to_census_tract(l, 'data/geojsons/Washington_2016.geojson')
+	# Former way of converting, keeping in for now in case we need
+	# to look back
+	# out = [ latlng_to_census_tract(l, 'data/geojsons/Washington_2016.geojson') for l in llngs ]
+	out = latlngs_to_census_tracts(llngs, 'data/geojsons/Washington_2016.geojson')
+
+	assert len(exps) == len(out), "Something is rotten"
+
+	for i in range(len(out)):
+		print("Address: ", adds[i])
+		print("Expected Census Tract {}, got {}".format(exps[i], out[i]))
