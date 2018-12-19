@@ -1,142 +1,87 @@
-"""address_to_census_tract.py
-
+#!/usr/bin/env python3
+"""
 Takes a file containing a list of addresses, one per line, and returns their
-associated census tract within Seattle.
+associated census tract within Washington.
 
 To run:
-	python address_to_census_tract.py
+    ./address_to_census_tract.py
 
 Requirements:
-
+    geocoder
+    shapely
 """
 import geocoder
-import time
+import json
+from shapely.geometry import shape, Point
+from sys import stderr
 
-def read_addresses(fname):
-	"""Read a TSV containing one address per line to a list of addresses."""
-	print("Reading in addresses from {}".format(fname))
-	addresses = []
-	with open(fname, 'r') as f:
-		# Skip the first line
-		f.readline()
-		for line in f.readlines():
-			line = line.split('\t')
-			address = line[0]
-			addresses.append(address)
-	print("Successfully read in {} addresses.".format(len(addresses)))
-	return addresses
 
-def read_expected(fname):
-	"""Read in expected census tracts for easy comparisonself.
+def main():
+    with open("data/test/testset.json", encoding = "UTF-8") as file:
+        testset = [ json.loads(line) for line in file ]
 
-	This function is not necessary for the conversion to work, it is just
-	helpful in bugfixing and testingself.
-	"""
-	exps = []
-	with open(fname, 'r') as f:
-		# Skip the first line
-		f.readline()
-		for line in f.readlines():
-			line = line.split('\t')
-			exp = line[1].strip()
-			exps.append(exp)
-	print("Successfully read in {} expected census tracts.".format(len(exps)))
-	return exps
+    tracts = load_geojson("data/geojsons/Washington_2016.geojson")
 
-def print_latlngs(addresses):
-	"""Print to screen all the lat/long values for a list of addresses."""
-	latlngs = []
-	for address in addresses:
-		latlngs.append(address_to_latlng(address))
+    for record in testset:
+        address = record["address"]
 
-	for latlng in ltlngs:
-		print(latlng)
+        tract = None
+        latlng = address_to_latlng(address)
 
-# def latlng_to_census_tract(latlng, geojson):
-# 	"""Convert a lat/long value to a census tract."""
-# 	### No longer in use. Replaced by better optimized `latlngs_to_census_tracts`
-# 	import json
-# 	from shapely.geometry import shape, Point
-# 	# depending on your version, use: from shapely.geometry import shape, Point
-#
-# 	# load GeoJSON file containing sectors
-# 	with open(geojson) as f:
-# 	    js = json.load(f)
-#
-# 	# construct point based on lon/lat returned by geocoder
-# 	x, y = latlng[0], latlng[1]
-# 	point = Point(y, x)
-# 	print(point)
-#
-# 	# check each polygon to see if it contains the point
-# 	for feature in js['features']:
-# 		polygon = shape(feature['geometry'])
-# 		if polygon.contains(point):
-# 			print("Found: ", feature['properties']['NAMELSAD'])
-# 			return feature['properties']['NAMELSAD']
-# 	return None
+        if latlng:
+            tract = latlng_to_polygon(latlng, tracts)
 
-def latlngs_to_census_tracts(latlngs, geojson):
-	"""Convert a lat/long list to a list of census tracts."""
-	import json
-	from shapely.geometry import shape, Point
-	# depending on your version, use: from shapely.geometry import shape, Point
+            if not tract:
+                print(f"failed to find tract for {latlng}", file = stderr)
+        else:
+            print(f"failed to geocode {address}", file = stderr)
 
-	# load GeoJSON file containing sectors
-	with open(geojson) as f:
-	    js = json.load(f)
+        # GEOID is the nationally-unique tract identifier
+        result = {
+            "latlng": latlng,
+            "tract": tract.get("properties", {}).get("GEOID") if tract else None,
+        }
 
-	# Construct a map of unique identifiers to polygons
-	# In this case, unique identifires are a combination of STATE|COUNTY|TRACT
-	polygons = {}
-	for feature in js['features']:
-		state_county_tract = "{}|{}|{}".format(feature['properties']['STATEFP'], feature['properties']['COUNTYFP'], feature['properties']['NAME'])
-		polygons[state_county_tract] = shape(feature['geometry'])
+        print(json.dumps({ **record, "result": result }))
 
-	o = []
-
-	for latlng in latlngs:
-		# construct point based on lon/lat returned by geocoder
-		t = True
-		x, y = latlng[0], latlng[1]
-		point = Point(y, x)
-		for ct in polygons.keys():
-			if polygons[ct].contains(point):
-				t = False
-				o.append(ct.split('|')[2])
-		if t:
-			o.append(None)
-	return o
 
 def address_to_latlng(address):
-	"""Convert an address string to a list of latitude, longitude coordinates.
+    """Convert an address string to a list of latitude, longitude coordinates.
 
-	Currently uses Google's geocoder API for geocoding, this could be replaced
-	with other geocoder submodules
-	"""
-	print("Converting {} to latlng".format(address))
-	g = geocoder.google(str(address))
-	l = g.latlng
+    Currently uses Google's geocoder API for geocoding, but this could be
+    replaced with other geocoder implementations.
+    """
+    return geocoder.google(address).latlng
 
-	print(l)
 
-	return l
+def load_geojson(geojson_filename):
+    """Read GeoJSON file and return a list of features converted to shapes."""
 
-if __name__=='__main__':
-	print("Beginning.")
-	print('\n')
-	fn = 'data/test/testset.tsv'
-	adds = read_addresses(fn)
-	exps = read_expected(fn)
-	print('\n')
-	llngs = [ address_to_latlng(address) for address in adds ]
-	# Former way of converting, keeping in for now in case we need
-	# to look back
-	# out = [ latlng_to_census_tract(l, 'data/geojsons/Washington_2016.geojson') for l in llngs ]
-	out = latlngs_to_census_tracts(llngs, 'data/geojsons/Washington_2016.geojson')
+    with open(geojson_filename) as file:
+        geojson = json.load(file)
 
-	assert len(exps) == len(out), "Something is rotten"
+    return [
+        { "properties": feature["properties"], "shape": shape(feature['geometry']) }
+            for feature in geojson["features"]
+    ]
 
-	for i in range(len(out)):
-		print("Address: ", adds[i])
-		print("Expected Census Tract {}, got {}".format(exps[i], out[i]))
+
+def latlng_to_polygon(latlng, polygons):
+    """
+    Find the first polygon in *polygons* which contains the *latlng* and return
+    the polygon, else None.
+    """
+
+    # Ye olde lat/lng vs. lng/lat schism rears its head.
+    lat, lng = latlng
+    point = Point(lng, lat)
+
+    for polygon in polygons:
+        if polygon["shape"].contains(point):
+            return polygon
+
+    return None
+
+
+if __name__ == '__main__':
+    main()
