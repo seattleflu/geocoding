@@ -1,0 +1,62 @@
+#!/bin/bash
+# An example of using the census.gov geocoder.
+#
+# On one hand, this goes directly from address → tract without an
+# intervening step or any local data and is really simple.  Nice!  On the
+# other hand, it doesn't have great address coverage, particularly in
+# non-residential areas, which is indeed noted as a potential pitfall by
+# the Census' documentation.  Whomp.
+#
+# A two-step process of trying to get any lat/long (which might be variable
+# precision depending on the address) and then converting that to a census
+# tract seems more robust to geocoding problems.  The Census is concerned with
+# fully-specified addresses to get block and county information too, which we
+# don't care about.
+# 
+# One pitfall is that geocoding ambiguity (i.e. we have an address but the
+# geocoder can only place it at Seattle's centroid) is that we get an
+# artificial abundance of addresses assigned to the tract in which
+# low-geographic resolution centroids fall.  c.f. Null Island.
+
+set -euo pipefail
+
+main() {
+    local address="${1:?A single-line address must be provided as the sole argument.}"
+
+    geocode "$address" | print-tract-id
+}
+
+geocode() {
+    local address="$1"
+
+    # This makes an API request equivalent to interactive use at
+    #    https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?form
+    #
+    # Lots of detailed documentation is available from
+    #    https://www.census.gov/geo/maps-data/data/geocoder.html
+    #
+    # albeit mostly in the form of PDFs.  Poke through the disclosable sections
+    # on that page to find links to several resources.
+    #
+    # The study modeling efforts currently plan to use ACS2016 demography data,
+    # so we request ACS2016 vintage geographies (i.e. census tract definitions)
+    # based on geocoding of address ranges (AR) in the ACS2017 benchmark.  The
+    # ACS2017 is the latest fixed benchmark available.  Note that there are
+    # "Current" benchmarks and vintages which track the latest data, but we
+    # don't want to use those to prevent drift in our data over time.  If the
+    # modeling decides to use a different base dataset, we'll need to update
+    # this accordingly.
+
+    curl -fsS https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress \
+        --get \
+        --data-urlencode benchmark=Public_AR_ACS2017 \
+        --data-urlencode vintage=ACS2016_ACS2017 \
+        --data-urlencode format=json \
+        --data-urlencode address="$address"
+}
+
+print-tract-id() {
+    jq --raw-output '.result.addressMatches[0].geographies["Census Tracts"][0].GEOID'
+}
+
+main "$@"
