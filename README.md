@@ -46,8 +46,10 @@ Stored in the `data/` directory.
 * `tracts/tl_2016_${state_fips_code}_tract.{dbf,prj,shp,shp.xml,shx}` are the
   2016 Census tract Shapefiles and supporting files for each state, as
   described at <https://www.census.gov/geo/maps-data/data/tiger-line.html>.
+
   These are not checked into version control and must be downloaded locally by
-  running `snakemake tracts`.
+  running `snakemake tracts`.  Do not download the files in parallel or
+  repeatedly or the Census will likely ban your IP address!
 
 * `tracts/tl_2016_${state_fips_code}_tract.geojson` are the Shapefiles
   converted to GeoJSON, which is a slightly more useful format.
