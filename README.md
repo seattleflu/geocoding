@@ -48,3 +48,9 @@ Stored in the `data/` directory.
   described at <https://www.census.gov/geo/maps-data/data/tiger-line.html>.
   These are not checked into version control and must be downloaded locally by
   running `snakemake tracts`.
+
+* `tracts/tl_2016_${state_fips_code}_tract.geojson` are the Shapefiles
+  converted to GeoJSON, which is a slightly more useful format.
+
+  These are not checked into version control and must be converted locally by
+  running `snakemake geojsons`.  `ogr2ogr` must be installed.
