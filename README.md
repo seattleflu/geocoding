@@ -1,5 +1,35 @@
 # Geocoding addresses into 2016 Census tracts
 
+`address_to_census_tract.py` prototypes address to Census tract conversion.  It uses a two-step process:
+
+1. Geocode a given single-line address to a (latitude, longitude) pair using a
+   remote (forward) geocoding service.
+   
+   In the prototype, we're using Google's service, but this is swappable.  The
+   important point is the quality and robustness of the geocoding given dirty
+   data.  Even rough geocoding results can be useful though, as Census tracts
+   are fairly large.  I believe that as long as we submit addresses free of
+   any linkage to other data, we can use a commercially-available geocoding
+   service without PHI concerns, c.f.  [discussion on
+   #data-transfer](https://seattle-flu-study.slack.com/archives/CDTUFFQCU/p1544570425008700).
+
+2. Find the Census tract polygon containing the geocoded (latitude, longitude).
+
+   This can be done locally very easily given an off-the-shelf geospatial
+   library and publicly available Census geodata.
+
+Note that the geocoding result may have variable specificity.  If an address
+can only be geocoded to "Seattle", then the geocoder may return Seattle's
+centroid.  This would artificially inflate the Census tracts containing the
+centroids returned for non-specific locations.
+
+We're not using the [Census' own
+geocoder](https://www.census.gov/geo/maps-data/data/geocoder.html), even
+though it can go directly to a Census tract, because its address coverage
+isn't great and it is not robust to bad addresses. As noted by the Census' own
+documentation, this is especially for business addresses, which we will be
+collecting as places of work.
+
 ## Data
 
 Stored in the `data/` directory.
