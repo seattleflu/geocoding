@@ -21,7 +21,7 @@ with open("data/states.txt", encoding = "UTF-8") as file:
 
 # Download 2016 Census tracts for all states.
 rule tracts:
-    message: "Downloading Census tracts for all states"
+    message: "Downloaded Census tracts for all states"
     input:
         expand("data/tracts/tl_2016_{state.fips_code}_tract.shp",
             state = states)
@@ -58,7 +58,7 @@ rule unpack_state_tracts:
 
 # Convert to GeoJSON
 rule geojsons:
-    message: "Converting Census tracts for all state to GeoJSON"
+    message: "Converted Census tracts for all state to GeoJSON"
     input:
         expand("data/tracts/tl_2016_{state.fips_code}_tract.geojson",
             state = states)
