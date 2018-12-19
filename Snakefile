@@ -21,11 +21,13 @@ with open("data/states.txt", encoding = "UTF-8") as file:
 
 # Download 2016 Census tracts for all states.
 rule tracts:
+    message: "Downloading Census tracts for all states"
     input:
         expand("data/tracts/tl_2016_{state.fips_code}_tract.shp",
             state = states)
 
 rule state_tracts:
+    message: "Downloading tracts for {wildcards.state_code}"
     output:
         temp("data/tracts/tl_2016_{state_code}_tract.zip")
     shell:
@@ -35,6 +37,7 @@ rule state_tracts:
         """
 
 rule unpack_state_tracts:
+    message: "Unpacking tracts for {wildcards.state_code}"
     input:
         rules.state_tracts.output
     output:
