@@ -101,6 +101,7 @@ def process_json(file_path: str, output: str, address_map: dict):
 
     tracts = load_geojson("data/geojsons/Washington_2016.geojson")
     cache = load_or_create_cache()
+    to_save = []
 
     for record in data:
         # Subset to address-relevant columns (from config) and store separately
@@ -146,10 +147,12 @@ def process_json(file_path: str, output: str, address_map: dict):
         result["census_tract"] = tract
 
         if output:
-            json.dump(result, open(output, mode='rb'))
+            to_save.append(result)
         else:
             print(json.dumps(result))
 
+    if output:
+        json.dump(to_save, open(output, mode='w'))
     save_cache(cache)
 
 def process_csv_or_excel(file_path: str, output: str, address_map: dict):
