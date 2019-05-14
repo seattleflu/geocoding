@@ -18,3 +18,13 @@ ADDRESS_CONFIG = {
      'zipcode': None
  }
 }
+
+PII_CONFIG = {
+    'default': {
+        'name': 'Patient Name',
+        'birth-date': 'DOB',
+        'gender': 'Gender',
+        'postal-code': 'Postal Code'
+    },
+    'sch': {}
+}

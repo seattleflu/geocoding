@@ -23,7 +23,6 @@ Requirements:
 """
 import json
 import os
-from sys import argv
 from textwrap import dedent
 from shapely.geometry import shape, Point
 import logging
@@ -313,12 +312,15 @@ def standardize_address(address: dict, api_map: dict) -> dict:
 
     Raises a KeyError if a mapped key from *api_map* does not exist in 
     *address*.
+
+    # TODO the bottom part can be done in a loop
+    # TODO rewrite as object for reuse w/ pii? 
     """
     if not set(address.keys()).issubset(api_map.values()):
         raise AddressTranslationNotFoundError(address.keys(), api_map)
 
     for key in address:
-        address[key] = address[key].upper().strip() 
+        address[key] = str(address[key]).upper().strip()
 
     return {
         'street': api_map['street'] and address[api_map['street']],
@@ -360,6 +362,8 @@ def extract_address(address: dict):
         first_candidate = address.candidates[0]
 
         return {
+            'zipcode': first_candidate.components.zipcode,  # TODO 
+            'plus4_code': first_candidate.components.plus4_code,
             'lat': first_candidate.metadata.latitude,
             'lng': first_candidate.metadata.longitude
         }
