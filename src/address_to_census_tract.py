@@ -93,8 +93,6 @@ def process_json(file_path: str, output: str, address_map: dict):
     
     Dumps the generated JSON data to stdout unless an *output* file path is
     given.
-
-    TODO too long of a function
     """
     with open(file_path, encoding = "UTF-8") as file:
         data = [ json.loads(line) for line in file ]
@@ -104,47 +102,7 @@ def process_json(file_path: str, output: str, address_map: dict):
     to_save = []
 
     for record in data:
-        # Subset to address-relevant columns (from config) and store separately
-        address = { key: record[key] for key in record if key in address_map.values() }
-        if not address: 
-            raise NoAddressDataFoundError(record.keys(), address_map)  
-        
-        std_address = standardize_address(address, address_map)
-        response = check_cache(std_address, cache)
-        
-        if not response:  # Not in cache. Look up.
-            response = lookup_address(std_address)
-
-        if not response:  # Invalid address. Try again.
-            LOG.info(dedent(f"""
-            No match found for given address. Extracting address from text
-            """))
-            response = extract_address(std_address)
-
-        if not response:
-            LOG.warning(dedent(f"""
-            Could not look up address {address}.
-            """))
-        else:
-            # Store item in cache, possibly overwriting existing key
-            cache[json.dumps(std_address)] = response
-
-        latlng = None
-        tract = None
-
-        # Extract lat/lng from response object 
-        if response and response['lat'] and response['lng']:
-            latlng = [response['lat'], response['lng']]
-            tract = latlng_to_polygon(latlng, tracts)
-
-        else:
-            LOG.warning(dedent(f"""
-            Failed to geocode {address}.
-            """))
-
-        # Drop identifiable address keys 
-        result = {k: record[k] for k in record if k not in address}
-        result["census_tract"] = tract
+        result = process_json_record(record, address_map, tracts, cache)
 
         if output:
             to_save.append(result)
@@ -210,6 +168,55 @@ def process_csv_or_excel(file_path: str, output: str, address_map: dict):
         df.to_csv(output, index=False) 
     else:
         print(df.to_csv(index=False))
+
+def process_json_record(record, address_map, tracts, cache):
+    """
+    Given a record from a JSON file, 
+    TODO
+    """
+    # Subset to address-relevant columns (from config) and store separately
+    address = { key: record[key] for key in record if key in address_map.values() }
+    if not address: 
+        raise NoAddressDataFoundError(record.keys(), address_map)  
+    
+    std_address = standardize_address(address, address_map)
+    response = check_cache(std_address, cache)
+    
+    if not response:  # Not in cache. Look up.
+        response = lookup_address(std_address)
+
+    if not response:  # Invalid address. Try again.
+        LOG.info(dedent(f"""
+        No match found for given address. Extracting address from text
+        """))
+        response = extract_address(std_address)
+
+    if not response:
+        LOG.warning(dedent(f"""
+        Could not look up address {address}.
+        """))
+    else:
+        # Store item in cache, possibly overwriting existing key
+        cache[json.dumps(std_address)] = response
+
+    latlng = None
+    tract = None
+
+    # Extract lat/lng from response object 
+    if response and response['lat'] and response['lng']:
+        latlng = [response['lat'], response['lng']]
+        tract = latlng_to_polygon(latlng, tracts)
+
+    else:
+        LOG.warning(dedent(f"""
+        Failed to geocode {address}.
+        """))
+
+    # Drop identifiable address keys 
+    result = {k: record[k] for k in record if k not in address}
+    result["census_tract"] = tract
+
+    return result
 
 def smartystreets_client_builder():
     """
