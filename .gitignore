@@ -9,3 +9,6 @@ data/geojsons/*
 *.DS_Store
 
 __pycache__
+
+# Pickled cache
+cache.pickle
