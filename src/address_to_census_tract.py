@@ -138,7 +138,7 @@ def process_csv_or_excel(file_path: str, output: str, address_map: dict):
     response.apply(lambda x: save_to_cache(x['std_address'], x['response'], cache), axis=1) 
 
     # Drop identifiable address columns
-    df = df[[ col for col in df.columns if col not in address_map.values() ]]
+    df = df[[ col for col in list(df) if col not in address_map.values() ]]
     df['census_tract'] = census_tract_csv_or_excel(response, tracts)
     
     dump_csv_or_excel(df, output)
@@ -155,21 +155,21 @@ def process_json_record(record: dict, address_map: dict, tracts,
     
     std_address = standardize_address(address, address_map)
     response = check_cache(std_address, cache)
-    
-    if not response:  # Not in cache. Look up.
+
+    if type(response) != dict: # Not in cache. Look up.
         response = lookup_address(std_address)
 
-    if not response:  # Invalid address. Try again.
-        LOG.info(f"No match found. Extracting address from text.")
-        response = extract_address(std_address)
+        if not response:  # Invalid address. Try again.
+            LOG.info(f"No match found. Extracting address from text.")
+            response = extract_address(std_address)
 
-    if not response:
-        LOG.warning(f"Could not look up address {address}.")
+        if not response:
+            LOG.warning(f"Could not look up address {address}.")
     
     save_to_cache(std_address, response, cache)
 
     # Drop identifiable address keys and add census tract
-    result = {k: record[k] for k in record if k not in address}
+    result = {k: record[k] for k in record if k not in address_map.values()}
     result["census_tract"] = census_tract_json_record(response, tracts)
     return result
 
@@ -184,7 +184,7 @@ def address_data_json_record(record: dict, address_map: dict) -> dict:
     try:
         address = { key: record[key] for key in address_keys }
     except KeyError:
-        raise AddressTranslationNotFoundError(record.keys(), address_map)
+        raise AddressTranslationError(record.keys(), address_map)
         
     if not address: 
         raise NoAddressDataFoundError(record.keys(), address_map) 
@@ -230,7 +230,7 @@ def address_data_csv_or_excel(df: pd.DataFrame, address_map: dict) -> pd.Series:
     try:
         address_data = df[address_columns]
     except KeyError:
-        raise AddressTranslationNotFoundError(list(df), address_map)
+        raise AddressTranslationError(list(df), address_map)
 
     return pd.Series(address_data.to_dict(orient='records'))
 
@@ -240,9 +240,10 @@ def geocode_address_csv_or_excel(address: pd.DataFrame, cache: TTLCache) -> pd.D
     """
     response = pd.DataFrame()
     response['std_address'] = address['std_address']
+
+
     # Check in cache first
     response['response'] = response['std_address'].apply(lambda x: check_cache(x, cache))
-
     # Look up those not in cache 
     response['response'] = response.apply(lambda x: lookup_address(x['std_address']) \
         if not x['response'] else x['response'], axis=1)
@@ -302,6 +303,9 @@ def check_cache(address: dict, cache: TTLCache) -> dict:
         try: 
             return cache[json.dumps(address)]
         except KeyError:
+            LOG.warning("""
+            Cache item not found
+            """)
             pass
 
 def save_to_cache(standardized_address: dict, response: dict, cache: TTLCache):
@@ -309,8 +313,7 @@ def save_to_cache(standardized_address: dict, response: dict, cache: TTLCache):
     Store item in cache, possibly overwriting existing key
     TODO
     """
-    if response:
-        cache[json.dumps(standardized_address)] = response
+    cache[json.dumps(standardized_address)] = response
     return cache
 
 def save_cache(cache: TTLCache):
@@ -382,7 +385,9 @@ def standardize_address(address: dict, api_map: dict) -> dict:
 
     standardized_address = {}
     for key in api_map:
-        standardized_address[key] = api_map[key] and address[api_map[key]]
+        if key:
+            standardized_address[key] = api_map[key] and address[api_map[key]]
+
     return standardized_address 
 
 def extract_address(address: dict):
@@ -470,7 +475,7 @@ class InvalidAddressMappingError(KeyError):
     pass
 
 
-class AddressTranslationNotFoundError(InvalidAddressMappingError):
+class AddressTranslationError(InvalidAddressMappingError):
     """
     TODO 
     """
