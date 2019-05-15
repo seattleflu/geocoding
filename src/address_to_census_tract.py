@@ -241,12 +241,13 @@ def geocode_address_csv_or_excel(address: pd.DataFrame, cache: TTLCache) -> pd.D
     response = pd.DataFrame()
     response['std_address'] = address['std_address']
 
-
     # Check in cache first
     response['response'] = response['std_address'].apply(lambda x: check_cache(x, cache))
+    
     # Look up those not in cache 
     response['response'] = response.apply(lambda x: lookup_address(x['std_address']) \
-        if not x['response'] else x['response'], axis=1)
+        if type(x['response']) != dict else x['response'], axis=1)
+
     # Look up those that failed the last time
     response['response'] = response.apply(lambda x: extract_address(x['std_address']) \
         if not x['response'] else x['response'], axis=1)
@@ -330,6 +331,9 @@ def lookup_address(address: dict) -> dict:
     broken into pieces (street, city, zipcode, etc.) or is a free text lookup 
     (and only the `street` parameter is used).
     """
+    LOG.warning("""
+    Looking up address on SS
+    """)
     client = smartystreets_client_builder().build_us_street_api_client()
     result = None
 
@@ -343,13 +347,15 @@ def lookup_address(address: dict) -> dict:
     client.send_lookup(lookup)
     result = lookup.result
 
-    if result:
-        first_candidate = result[0]
+    if not result:
+        return {}
+    
+    first_candidate = result[0]
 
-        return {
-            "lat": first_candidate.metadata.latitude,
-            "lng": first_candidate.metadata.longitude
-        }
+    return {
+        "lat": first_candidate.metadata.latitude,
+        "lng": first_candidate.metadata.longitude
+    }
 
 def us_street_lookup(address: dict) -> Lookup:
     """
@@ -408,6 +414,9 @@ def extract_address(address: dict):
     Note that this API is not consistent with the US Street API, and the lookup
     and responses must be handled differently.
     """
+    LOG.warning("""
+    Extracting address from string of text, then looking up.
+    """)
     client = smartystreets_client_builder().build_us_extract_api_client()
     address_text = ', '.join([ str(val) for val in list(address.values()) if val ])
 
@@ -419,7 +428,7 @@ def extract_address(address: dict):
 
     for address in addresses:
         if len(address.candidates) == 0:
-            return
+            return {}
 
         first_candidate = address.candidates[0]
         return {
