@@ -1,11 +1,11 @@
 ADDRESS_CONFIG = {
  'uw': {
-    'street': 'AddressLine1',
-    'street2': 'AddressLine2',
-    'secondary': 'AddressLine3',
+    'street': 'Street',
+    'street2': 'Street2',
+    'secondary': None,
     'city': 'City',
-    'state': 'StateText',
-    'zipcode': 'PostalCode'
+    'state': 'State',
+    'zipcode': 'ZipCode'
     },
  'sch': {
      'street': 'ADD_LINE_1',
