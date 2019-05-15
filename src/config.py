@@ -7,7 +7,14 @@ ADDRESS_CONFIG = {
     'state': 'StateText',
     'zipcode': 'PostalCode'
     },
- 'sch': {},
+ 'sch': {
+     'street': 'ADD_LINE_1',
+     'street2': 'ADD_LINE_2',
+     'street3': 'ADD-LINE_3',
+     'city': 'CITY',
+     'state': 'ABBR',
+     'zipcode': 'ZIP'
+ },
  'kp': {},
  'default': {
      'street': 'address',
