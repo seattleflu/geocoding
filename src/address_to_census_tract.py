@@ -36,6 +36,7 @@ import pickle
 from cachetools import TTLCache
 
 LOG = logging.getLogger(__name__)
+CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
 
 @click.command()
 @click.argument('filepath', required=True, type=click.Path(exists=True))
@@ -290,7 +291,7 @@ def load_or_create_cache() -> TTLCache:
         cache = pickle.load(open('cache.pickle', mode='rb'))
     except FileNotFoundError:
         LOG.info("Couldn't find an existing cache file. Creating new cache.")
-        cache = TTLCache(maxsize=100000, ttl=6000)
+        cache = TTLCache(maxsize=100000, ttl=CACHE_TTL)
     return cache
 
 def check_cache(address: dict, cache: TTLCache) -> dict:
