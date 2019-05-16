@@ -47,20 +47,43 @@ CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
 @click.option('--street2', default=None, 
     help='Key name for address street second line')
 @click.option('--secondary', default=None, 
-    help='Key name for address secondary information (e.g. address line 3)')
+    help='Key name for address secondary information/line 3')
 @click.option('-c', '--city', default=None, 
     help='Key name for address city')
 @click.option('--state', default=None, 
     help='Key name for address state')
 @click.option('-z', '--zipcode', default=None, 
     help='Key name for address zipcode')
-@click.option('-o', '--output', default=None, help='Name of output file')
+@click.option('-o', '--output', default=None, 
+    help='Name of output file. Defaults to None, printing results to stdout.')
     # TODO validate output extension?
     # TODO allow users to enter csv and return json? and vice versa
-@click.option('--invalidate_cache', is_flag=True, help='Invalidate cached responses?')
+@click.option('--invalidate_cache', is_flag=True, 
+    help='Optional flag for invalidating cached responses')
 
 def address_to_census_tract(filepath, institute, output, invalidate_cache, **kwargs):
     """
+    Given a *filepath*, de-identifies addresses in a CSV or XLSX document by
+    converting them into census tracts. Prints a CSV or XLSX document with the
+    original address information removed but with census tract added. 
+
+    Address configuration is imported from `config.py` according to the given 
+    *institute*. The default is to only look for one column or key named
+    'address'. Institutional configurations can be modified in `config.py`. 
+
+    Address configurations can also be given on-the-fly via several keyword
+    options. These options begin with the help text 'Key name for...'. 
+
+    By default, the resulting data is printed to stdout. This can be overridden
+    with the *output* option for a new filepath. Currently, only two possible
+    *output* file extensions have been implemented: JSON and CSV. If providing
+    address in a JSON file, please use a `.json` file extension in the given
+    *output* option. Similarly, if providing address data in CSV or Excel
+    format, please use a `.csv` file extension in the given *output* option.
+
+    To reduce the total number of requests sent to SmartyStreets' geocoding API,
+    responses (including negative response) are cached. To override the cache
+    for a set of data, provide the `--invalidate_cache` flag at runtime.
     """
     custom_address_config = not all(arg is None for arg in kwargs.values())
 
@@ -108,7 +131,6 @@ def process_json(file_path: str, output: str, address_map: dict,
     for record in data:
         result = process_json_record(record, address_map, tracts, cache, 
                                      invalidate_cache)
-
         if output:
             to_save.append(result)
         else:
@@ -163,7 +185,7 @@ def process_json_record(record: dict, address_map: dict, tracts,
     LOG.info(f"Currently geocoding address {address}.")
     
     std_address = standardize_address(address, address_map)
-    response = None 
+    response = None
     if not invalidate_cache:
         response = check_cache(std_address, cache)
     response = geocode_uncached_address(response, std_address)
@@ -188,7 +210,8 @@ def address_data_json_record(record: dict, address_map: dict) -> dict:
         raise AddressTranslationError(record.keys(), address_map)
         
     if not address: 
-        raise NoAddressDataFoundError(record.keys(), address_map) 
+        raise NoAddressDataFoundError(record.keys(), address_map)
+
     return address
 
 def census_tract_json_record(response: dict, tracts) -> str:
@@ -201,6 +224,7 @@ def census_tract_json_record(response: dict, tracts) -> str:
         return
 
     latlng = [response['lat'], response['lng']]
+
     return latlng_to_polygon(latlng, tracts)
 
 def load_csv_or_excel(filepath: str) -> pd.DataFrame:
@@ -347,8 +371,7 @@ def lookup_address(address: dict) -> dict:
     broken into pieces (street, city, zipcode, etc.) or is a free text lookup 
     (and only the `street` parameter is used).
     """
-    LOG.info(dedent("""Pinging SmartyStreets geocoding API
-    """))
+    LOG.info("""Pinging SmartyStreets geocoding API""")
     client = smartystreets_client_builder().build_us_street_api_client()
     result = None
 
