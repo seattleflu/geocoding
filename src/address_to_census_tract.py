@@ -99,8 +99,8 @@ def process_json(file_path: str, output: str, address_map: dict):
 
     tracts = load_geojson("data/geojsons/Washington_2016.geojson")
     cache = load_or_create_cache()
+    
     to_save = []
-
     for record in data:
         result = process_json_record(record, address_map, tracts, cache)
 
@@ -108,10 +108,11 @@ def process_json(file_path: str, output: str, address_map: dict):
             to_save.append(result)
         else:
             print(json.dumps(result))
-
+    
+    save_cache(cache)
+    
     if output:
         json.dump(to_save, open(output, mode='w'))
-    save_cache(cache)
 
 def process_csv_or_excel(file_path: str, output: str, address_map: dict):
     """
@@ -151,21 +152,11 @@ def process_json_record(record: dict, address_map: dict, tracts,
     TODO docstring
     """
     address = address_data_json_record(record, address_map)
-    LOG.info(f"Geocoding address {address}.")
+    LOG.info(f"Currently geocoding address {address}.")
     
     std_address = standardize_address(address, address_map)
     response = check_cache(std_address, cache)
-
-    if type(response) != dict: # Not in cache. Look up.
-        response = lookup_address(std_address)
-
-        if not response:  # Invalid address. Try again.
-            LOG.info(f"No match found. Extracting address from text.")
-            response = extract_address(std_address)
-
-        if not response:
-            LOG.warning(f"Could not look up address {address}.")
-    
+    response = geocode_uncached_address(response, std_address)
     save_to_cache(std_address, response, cache)
 
     # Drop identifiable address keys and add census tract
@@ -196,7 +187,7 @@ def census_tract_json_record(response: dict, tracts) -> str:
     tract from the given *tracts* file of polygons
     """
     if not response or not (response['lat'] or response['lng']):
-        LOG.warning(dedent(f"""Failed to geocode address."""))
+        LOG.warning("Failed to geocode address.")
         return
 
     latlng = [response['lat'], response['lng']]
@@ -245,24 +236,39 @@ def geocode_address_csv_or_excel(address: pd.DataFrame, cache: TTLCache) -> pd.D
     response['response'] = response['std_address'].apply(lambda x: check_cache(x, cache))
     
     # Look up those not in cache 
-    response['response'] = response.apply(lambda x: lookup_address(x['std_address']) \
-        if type(x['response']) != dict else x['response'], axis=1)
-
-    # Look up those that failed the last time
-    response['response'] = response.apply(lambda x: extract_address(x['std_address']) \
-        if not x['response'] else x['response'], axis=1)
+    response['response'] = response.apply(lambda x: 
+        geocode_uncached_address(x['response'], x['std_address']), axis=1)
 
     return response
+
+def geocode_uncached_address(response: dict, std_address: dict) -> dict:
+    """
+    TODO Not in cache. look up.
+
+    # Invalid address, try again 
+    """
+    if type(response) == dict:  # Was stored in cache 
+        return response
+
+    response = lookup_address(std_address)
+
+    if not response: 
+        LOG.info(f"No match found. Extracting address from text.")
+        response = extract_address(std_address)
+
+    if not response:
+       LOG.warning(f"Could not look up address.")
+
+    return response 
 
 def census_tract_csv_or_excel(response: pd.DataFrame, tracts) -> pd.Series:
     """
     Extract lat/lng from *response* DataFrame and return a pd.Series containing
     the affiliated census tract from the given *tracts* file of polygons.
-    """ 
-    lat = response['response'].apply(lambda x: x and x['lat'])
-    lng = response['response'].apply(lambda x: x and x['lng'])
+    """
+    lat = response['response'].apply(lambda x: x['lat'] if 'lat' in x else None)
+    lng = response['response'].apply(lambda x: x['lng'] if 'lng' in x else None)
     latlng = pd.Series(list(zip(lat, lng)))
-    
     return latlng.apply(lambda x: latlng_to_polygon(x, tracts))
 
 def dump_csv_or_excel(df: pd.DataFrame, output: str):
@@ -304,9 +310,7 @@ def check_cache(address: dict, cache: TTLCache) -> dict:
         try: 
             return cache[json.dumps(address)]
         except KeyError:
-            LOG.warning("""
-            Cache item not found
-            """)
+            LOG.warning("Item not found in cache.")
             pass
 
 def save_to_cache(standardized_address: dict, response: dict, cache: TTLCache):
@@ -331,9 +335,8 @@ def lookup_address(address: dict) -> dict:
     broken into pieces (street, city, zipcode, etc.) or is a free text lookup 
     (and only the `street` parameter is used).
     """
-    LOG.warning("""
-    Looking up address on SS
-    """)
+    LOG.info(dedent("""Pinging SmartyStreets geocoding API
+    """))
     client = smartystreets_client_builder().build_us_street_api_client()
     result = None
 
@@ -351,7 +354,6 @@ def lookup_address(address: dict) -> dict:
         return {}
     
     first_candidate = result[0]
-
     return {
         "lat": first_candidate.metadata.latitude,
         "lng": first_candidate.metadata.longitude
@@ -414,9 +416,8 @@ def extract_address(address: dict):
     Note that this API is not consistent with the US Street API, and the lookup
     and responses must be handled differently.
     """
-    LOG.warning("""
-    Extracting address from string of text, then looking up.
-    """)
+    LOG.warning("Previous lookup failed. Looking up address as free text.")
+
     client = smartystreets_client_builder().build_us_extract_api_client()
     address_text = ', '.join([ str(val) for val in list(address.values()) if val ])
 
@@ -427,16 +428,15 @@ def extract_address(address: dict):
     addresses = result.addresses
 
     for address in addresses:
-        if len(address.candidates) == 0:
-            return {}
-
-        first_candidate = address.candidates[0]
-        return {
-            'zipcode': first_candidate.components.zipcode,  # TODO 
-            'plus4_code': first_candidate.components.plus4_code,
-            'lat': first_candidate.metadata.latitude,
-            'lng': first_candidate.metadata.longitude
-        }
+        if len(address.candidates) > 0:
+            first_candidate = address.candidates[0]
+            return {
+                'zipcode': first_candidate.components.zipcode,  # TODO 
+                'plus4_code': first_candidate.components.plus4_code,
+                'lat': first_candidate.metadata.latitude,
+                'lng': first_candidate.metadata.longitude
+            }
+    return {}
 
 def load_geojson(geojson_filename):
     """Read GeoJSON file and return a list of features converted to shapes."""
@@ -454,7 +454,6 @@ def latlng_to_polygon(latlng: list, polygons):
     Find the first polygon in *polygons* (loaded from file) which contains the 
     *latlng* and return the polygon, else None.
     """
-    
     # Ye olde lat/lng vs. lng/lat schism rears its head.
     lat, lng = latlng
 

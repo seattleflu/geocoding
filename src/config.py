@@ -5,7 +5,8 @@ ADDRESS_CONFIG = {
     'secondary': None,
     'city': 'City',
     'state': 'State',
-    'zipcode': 'ZipCode'
+    'zipcode': 'ZipCode',
+    None: 'County'
     },
  'sch': {
      'street': 'ADD_LINE_1',
