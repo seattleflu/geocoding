@@ -493,14 +493,14 @@ class AddressTranslationError(InvalidAddressMappingError):
     
     def __str__(self):
         return dedent(f"""
-            The address map contains values not present in the given address.
-            
-            Address keys are:
-                {self.address_keys}
-            
-            The address mapping is:
-                {self.api_map}
-            """)
+                The address map contains values not present in the given address.
+                
+                Address keys are:
+                    {self.address_keys}
+                
+                The address mapping is:
+                    {self.api_map}
+                """)
 
 
 class NoAddressDataFoundError(InvalidAddressMappingError):
@@ -513,15 +513,15 @@ class NoAddressDataFoundError(InvalidAddressMappingError):
 
     def __str__(self):
         return dedent(f"""\n
-                Could not find any address data among the following key names:
-                    {list(self.address_map.values())}
-                The given keys were:
-                    {list(self.data_key_names)}
-                Did you forget to provide an institution or a custom configuration?
-                Please check your address mapping in `config.py` or run
-                    `src/address_to_census_tract.py --help` 
-                and try again.
-                """)
+            Could not find any address data among the following key names:
+                {list(self.address_map.values())}
+            The given keys were:
+                {list(self.data_key_names)}
+            Did you forget to provide an institution or a custom configuration?
+            Please check your address mapping in `config.py` or run
+                `src/address_to_census_tract.py --help` 
+            and try again.
+            """)
 
 
 if __name__ == '__main__':
