@@ -27,3 +27,5 @@ src/deidentify {filename} --address_only
 src/deidentify {filename}   
     // This would run both PII (if found) and address (if found). If not found \
     // either, raise error.
+    // Geocoding would be run first and would save 9-digit zipcode. This zipcode
+    // would be dumped after running through pii deidentification.
