@@ -32,7 +32,12 @@ PII_CONFIG = {
         'name': 'Patient Name',
         'birth-date': 'DOB',
         'gender': 'Gender',
-        'postal-code': 'Postal Code'
+        'postal-code': 'zipcode'
     },
-    'sch': {}
+    'sch': {
+        'name': 'PAT_NAME',
+        'birth-date': 'PAT_DOB',
+        'gender': 'PAT_SEX',
+        'postal-code': 'zipcode'
+    }
 }

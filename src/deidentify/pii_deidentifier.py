@@ -15,18 +15,22 @@ LOG = logging.getLogger(__name__)
 
 @click.command()
 @click.argument('filepath', required=True, type=click.Path(exists=True))
-@click.option('-i', '--institute', type=click.Choice(['UW', 'default']), 
+@click.option('-i', '--institute', type=click.Choice(['uw', 'sch', 'default']), 
     default='default', help='The acronym representing the institution.')
 @click.option('-n', '--name', default=None, help='')
-@click.optin('-d', '--dob', default=None, help='')
+@click.option('-d', '--dob', default=None, help='')
 @click.option('-g', '--gender', default=None, help='')
 @click.option('-p', '--postal-code', default=None, help='')
 
 def pii_deidentifier(filepath, institute, **kwargs):
+    pii_deidentifier_inner(filepath, institute, **kwargs)
+
+def pii_deidentifier_inner(filepath, institute, **kwargs):
     # TODO Check if file ends with '.csv' or '.excel'
     df = pd.read_csv(filepath)
     pii_map = config.PII_CONFIG[institute.lower()]
-
+    print(pii_map)
+    
     # TODO make this part a function (copied from address_to_..)
     # Subset to address-relevant columns (from config) and store separately
     pii_columns = [ col for col in df.columns if col in pii_map.values() ]
