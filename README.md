@@ -10,10 +10,7 @@
    useful though, as Census tracts are fairly large.  I believe that as long as we submit addresses 
    free of any linkage to other data, we can use a commercially-available geocoding service without 
    PHI concerns, c.f.  [discussion on 
-   #data-transfer](https://seattle-flu-study.slack.com/archives/CDTUFFQCU/p1544570425008700). To use
-   SmartyStreet's geocoding service, users must [register at their
-   website](http://smartystreets.com) and add their authentication keys as environment variables 
-   (see the [conda documentation](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#saving-environment-variables) for help). 
+   #data-transfer](https://seattle-flu-study.slack.com/archives/CDTUFFQCU/p1544570425008700). 
 
 2. Find the Census tract polygon containing the geocoded (latitude, longitude).
 
@@ -56,7 +53,24 @@ Stored in the `data/` directory.
 
 ## Development
 
-If you have [conda](https://conda.io/en/latest/) installed, then simply install the project 
+If you have [conda] installed, then simply install the project 
 dependencies using `conda env create -f geocoding_env_conda.yaml`. There is one additional 
 requirement not available through conda that needs to be installed. While inside of your `geocoding`
 conda environment, please run `pip install smartystreets-python-sdk`. 
+
+To use SmartyStreet's geocoding service, users must add an authentication key and token as
+environment variables. Authentication keys are provided to users who [register at their 
+website][SmartyStreets]. Collaborators in the Seattle Flu Study can request authentication keys
+from Thomas. 
+
+You can either [add persistent environment variables to your conda environment] or declare
+environment variables at the command line via:
+    ```
+    export SMARTYSTREETS_AUTH_ID='UNIQUE_AUTHENTICATION_ID'
+    export SMARTYSTREETS_AUTH_TOKEN='UNIQUE_AUTHENTICATION_TOKEN'
+    ```
+
+[conda]: https://conda.io/en/latest/
+[add persistent environment variables to your conda environment]: 
+https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#saving-environment-variables
+[SmartyStreets]: http://smartystreets.com
