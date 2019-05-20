@@ -4,16 +4,16 @@ Takes a file containing a list of addresses, one per line, and returns their
 associated census tract within Washington.
 
 To run:
-    `./src/address_to_census_tract.py {filename} --institute {institution}`
+    `./src/deidentify/address_to_census_tract.py {filename} --institute {institution}`
     or
-    `./src/address_to_census_tract.py {filename} --street {street column}`
+    `./src/deidentify/address_to_census_tract.py {filename} --street {street column}`
 
 Help:
-    `./src/address_to_census_tract.py --help`
+    `./src/deidentify/address_to_census_tract.py --help`
 
 Examples:
-    `./src/address_to_census_tract.py data/test/testset.json --institute default`
-    `./src/address_to_census_tract.py data/test/testset.csv -s address`
+    `./src/deidentify/address_to_census_tract.py data/test/testset.json --institute default`
+    `./src/deidentify/address_to_census_tract.py data/test/testset.csv -s address`
 
 Requirements:
     shapely
