@@ -55,9 +55,12 @@ CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
 @click.option('--state', default=None,
     help='Key name for address state')
 @click.option('-z', '--zipcode', default=None,
+    help='Key name for address zipcode')
+@click.option('-o', '--output', default=None, help='Name of output file')
+    # TODO validate output extension?
+    # TODO allow users to enter csv and return json? and vice versa
 
-
-def address_to_census_tract(filepath, institute, **kwargs):
+def address_to_census_tract(filepath, institute, output, **kwargs):
     """
     Given a *filepath* to a JSON, CSV, or Excel file (XLSX or XLS), de-identifies
     addresses contained within the data by converting them to census tracts and
@@ -91,9 +94,9 @@ def address_to_census_tract(filepath, institute, **kwargs):
         LOG.info(f"Using «{institute}» institutional configuration.")
 
     if filepath.endswith('.json'):
-        process_json(filepath, address_map)
+        process_json(filepath, output, address_map)
     elif filepath.endswith(('.csv', '.xlsx', '.xls')):
-        process_csv_or_excel(filepath, address_map)
+        process_csv_or_excel(filepath, output, address_map)
     else:
         raise UnsupportedFileExtensionError(dedent(f"""
         Unsupported file extension for file «{filepath}».
@@ -104,7 +107,7 @@ def address_to_census_tract(filepath, institute, **kwargs):
             * .json
     """))
 
-def process_json(file_path: str, address_map: dict):
+def process_json(file_path: str, output: str, address_map: dict):
     """
     Given a *file_path* to a JSON file, processes the relevant keys containing
     address data (from *address_map*) and generates an extra key for census
@@ -116,7 +119,10 @@ def process_json(file_path: str, address_map: dict):
     To minimize costs, an address should only be looked up once (via
     :func:`lookup_address`).
 
-    Dumps the generated JSON data to stdout.
+    Dumps the generated JSON data to stdout unless an *output* file path is
+    given.
+
+    TODO too long of a function
     """
 
     with open(file_path, encoding = "UTF-8") as file:
@@ -124,6 +130,7 @@ def process_json(file_path: str, address_map: dict):
 
     tracts = load_geojson("data/geojsons/Washington_2016.geojson")
     cache = load_or_create_cache()
+    to_save = []
 
     for record in data:
         # Subset to address-relevant columns (from config) and store separately
@@ -170,11 +177,16 @@ def process_json(file_path: str, address_map: dict):
         result = {k: record[k] for k in record if k not in address}
         result["census_tract"] = tract
 
-        print(json.dumps(result))
+        if output:
+            json.dump(result, open(output, mode='rb'))
+        else:
+            print(json.dumps(result))
 
+    if output:
+        json.dump(to_save, open(output, mode='w'))
     save_cache(cache)
 
-def process_csv_or_excel(file_path: str, address_map: dict):
+def process_csv_or_excel(file_path: str, output: str, address_map: dict):
     """
     Given a *file_path* to a CSV or Excel file, processes the relevant columns
     containing address data (from *address_map*) and generates an extra column
@@ -182,10 +194,9 @@ def process_csv_or_excel(file_path: str, address_map: dict):
 
     If a given address is invalid, `census_tract` is left blank.
 
-    Saves the new table at `data/test/out.csv`.
+    Dumps the data to stdout unless an *output* file path is given.
 
-    To minimize costs, an address should only be looked up once (via
-    `lookup_address()`).
+    # TODO too long
     """
     if file_path.endswith('.csv'):
         df = pd.read_csv(file_path)
@@ -193,28 +204,40 @@ def process_csv_or_excel(file_path: str, address_map: dict):
         df = pd.read_excel(file_path)
 
     tracts = load_geojson("data/geojsons/Washington_2016.geojson")
+    cache = load_or_create_cache()
 
-    # Subset to address-relevant columns only and store separately
+    # Subset to address-relevant columns (from config) and store separately
     address_columns = [ col for col in df.columns if col in address_map.values() ]
     if not address_columns:
         raise NoAddressDataFoundError(df.columns(), address_map)
-
     address_data = df[address_columns]
     address = pd.Series(address_data.to_dict(orient='records'))
-    std_address = address.apply(lambda x: standardize_address(x, address_map))
-    response = pd.Series(std_address.apply(lookup_address))
+
+    response = pd.DataFrame()
+    response['std_address'] = address.apply(lambda x: standardize_address(x, address_map))
+    # Check in cache first
+    response['response'] = response['std_address'].apply(lambda x: check_cache(x, cache))
+    # Look up those not in cache
+    response['response'] = response.apply(lambda x: lookup_address(x['std_address'])
+                                            if not x['response'] else x['response'], axis=1)
+    # Look up those that failed the last time
+    response['response'] = response.apply(lambda x: extract_address(x['std_address'])
+                                            if not x['response'] else x['response'], axis=1)
 
     # Extract lat/lng from response object
-    lat = response.apply(lambda x: x and x['lat'])
-    lng = response.apply(lambda x: x and x['lng'])
+    lat = response['response'].apply(lambda x: x and x['lat'])
+    lng = response['response'].apply(lambda x: x and x['lng'])
     latlng = pd.Series(list(zip(lat, lng)))
 
     df['census_tract'] = latlng.apply(lambda x: latlng_to_polygon(x, tracts))
 
     # Drop identifiable address columns
     df = df.drop(columns=address_columns)
-    print(df.to_csv(index=False))
 
+    if output:
+        df.to_csv(output, index=False)
+    else:
+        print(df.to_csv(index=False))
 
 def smartystreets_client_builder():
     """
