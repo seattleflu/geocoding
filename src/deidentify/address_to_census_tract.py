@@ -39,9 +39,11 @@ LOG = logging.getLogger(__name__)
 CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
 
 @click.command()
-@click.argument('filepath', required=True, type=click.Path(exists=True))
-@click.option('-i', '--institute', type=click.Choice(['uw', 'sch', 'default']),
-    default='default', help='The acronym (lowercase) representing the institution.')
+@click.argument('filename', metavar="<filename>", required=True,
+    type=click.Path(exists=True))
+@click.option('-i', '--institute', metavar="<institute>",
+    type=click.Choice(['uw', 'sch', 'default']), default='default',
+    help='The acronym (lowercase) representing the institution.')
 @click.option('-s', '--street', default=None,
     help='Key name for address street. Can also accept an entire address as free text')
 @click.option('--street2', default=None,
@@ -54,7 +56,7 @@ CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
     help='Key name for address state')
 @click.option('-z', '--zipcode', default=None,
     help='Key name for address zipcode')
-@click.option('-o', '--output', default=None,
+@click.option('-o', '--output', metavar="<output>", default=None,
     help='Name of output file. Defaults to None, printing results to stdout.')
     # TODO validate output extension?
     # TODO allow users to enter csv and return json? and vice versa
@@ -63,26 +65,26 @@ CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
 @click.option('--keep_zipcode', is_flag=True,
     help='Optional flag for keeping zipcode from geocoded address')
 
-def address_to_census_tract(filepath, institute, output, invalidate_cache,
+def address_to_census_tract(filename, institute, output, invalidate_cache,
                             keep_zipcode, **kwargs):
     """
-    Given a *filepath*, de-identifies addresses in a CSV or XLSX document by
+    Given a <filename>, de-identifies addresses in a CSV or XLSX document by
     converting them into census tracts. Prints a CSV or XLSX document with the
     original address information removed but with census tract added.
 
     Address configuration is imported from `config.py` according to the given
-    *institute*. The default is to only look for one column or key named
+    <institute>. The default is to only look for one column or key named
     'address'. Institutional configurations can be modified in `config.py`.
 
     Address configurations can also be given on-the-fly via several keyword
     options. These options begin with the help text 'Key name for...'.
 
     By default, the resulting data is printed to stdout. This can be overridden
-    with the *output* option for a new filepath. Currently, only two possible
-    *output* file extensions have been implemented: JSON and CSV. If providing
+    with the <output> option for a new filename. Currently, only two possible
+    <output> file extensions have been implemented: JSON and CSV. If providing
     address in a JSON file, please use a `.json` file extension in the given
-    *output* option. Similarly, if providing address data in CSV or Excel
-    format, please use a `.csv` file extension in the given *output* option.
+    <output> option. Similarly, if providing address data in CSV or Excel
+    format, please use a `.csv` file extension in the given <output> option.
 
     To reduce the total number of requests sent to SmartyStreets' geocoding API,
     responses (including negative response) are cached. To override the cache
@@ -90,14 +92,15 @@ def address_to_census_tract(filepath, institute, output, invalidate_cache,
 
     TODO keep_zipcode
     """
-
-    # TODO validate that no two keywords have the same value
-
-    address_to_census_tract_inner(filepath, institute, output, invalidate_cache,
+    address_to_census_tract_inner(filename, institute, output, invalidate_cache,
                                   keep_zipcode, **kwargs)
 
-def address_to_census_tract_inner(filepath, institute, output, invalidate_cache,
+def address_to_census_tract_inner(filename, institute, output, invalidate_cache,
                                   keep_zipcode, **kwargs):
+    """
+    Raises a :class:`UnsupportedFileExtensionError` when a given *filename* is
+    not supported.
+    """
     custom_address_config = not all(arg is None for arg in kwargs.values())
 
     if custom_address_config:
@@ -106,13 +109,13 @@ def address_to_census_tract_inner(filepath, institute, output, invalidate_cache,
         address_map = config.ADDRESS_CONFIG[institute.lower()]
         LOG.info(f"Using «{institute}» institutional configuration.")
 
-    if filepath.endswith('.json'):
-        process_json(filepath, output, address_map, invalidate_cache, keep_zipcode)
-    elif filepath.endswith(('.csv', '.xlsx', '.xls')):
-        process_csv_or_excel(filepath, output, address_map, invalidate_cache, keep_zipcode)
+    if filename.endswith('.json'):
+        process_json(filename, output, address_map, invalidate_cache, keep_zipcode)
+    elif filename.endswith(('.csv', '.xlsx', '.xls')):
+        process_csv_or_excel(filename, output, address_map, invalidate_cache, keep_zipcode)
     else:
         raise UnsupportedFileExtensionError(dedent(f"""
-        Unsupported file extension for file «{filepath}».
+        Unsupported file extension for file «{filename}».
         Please choose from one of the following file extensions:
             * .csv
             * .xls
@@ -120,26 +123,28 @@ def address_to_census_tract_inner(filepath, institute, output, invalidate_cache,
             * .json
     """))
 
-def process_json(file_path: str, output: str, address_map: dict,
+def process_json(filepath: str, output: str, address_map: dict,
                  invalidate_cache: bool, keep_zipcode: bool):
     """
-    Given a *file_path* to a JSON file, processes the relevant keys containing
+    Given a *filepath* to a JSON file, processes the relevant keys containing
     address data (from *address_map*) and generates an extra key for census
     tract data. Raises a :class:`NoAddressDataFoundError` if the address mapping
     is invalid and yields no matching keys from the address data.
 
     If a given address is invalid, `census_tract` is left blank.
 
-    To minimize costs, an address should only be looked up once (via
-    :func:`lookup_address`).
+    If *invalidate_cache* is true, any attempt at loading cached data is
+    overridden.
 
     Dumps the generated JSON data to stdout unless an *output* file path is
     given.
 
-    TODO docstring invalidate_cache, keep_zipcode
-    """
+    TODO keep_zipcode
 
-    with open(file_path, encoding = "UTF-8") as file:
+    To minimize costs, an address should only be looked up once (via
+    :func:`lookup_address`).
+    """
+    with open(filepath, encoding = "UTF-8") as file:
         data = [ json.loads(line) for line in file ]
 
     tracts = load_geojson("data/geojsons/Washington_2016.geojson")
@@ -159,23 +164,26 @@ def process_json(file_path: str, output: str, address_map: dict,
     if output:
         json.dump(to_save, open(output, mode='w'))
 
-def process_csv_or_excel(file_path: str, output: str, address_map: dict,
+def process_csv_or_excel(filepath: str, output: str, address_map: dict,
                          invalidate_cache: bool, keep_zipcode: bool):
     """
-    Given a *file_path* to a CSV or Excel file, processes the relevant columns
-    containing address data (from *address_map*) and generates an extra column
-    census tract data.
+    Given a *filepath* to a CSV or Excel file containing address data, generates
+    an extra column for the addresses' census tract, removing the original,
+    identifying address keys.
 
     If a given address is invalid, `census_tract` is left blank.
+
+    If *invalidate_cache* is true, any attempt to lookup an item in the cache
+    is overridden.
 
     Dumps the data to stdout unless an *output* file path is given.
 
     To minimize costs, an address should only be looked up once (via
     `lookup_address()`).
 
-    # TODO docstring invalidate_cache, keep_zipcode
+    # TODO keep_zipcode
     """
-    df = load_csv_or_excel(file_path)
+    df = load_csv_or_excel(filepath)
     tracts = load_geojson("data/geojsons/Washington_2016.geojson")
     cache = load_or_create_cache()
 
@@ -200,8 +208,20 @@ def process_json_record(record: dict, address_map: dict, tracts,
                         cache: TTLCache, invalidate_cache: bool,
                         keep_zipcode: bool) -> dict:
     """
-    Given a *record* from a JSON file,
-    TODO docstring
+    Given a *record* dictionary representing a line from a JSON file of data,
+    processes the relevant keys containing address data (from *address_map*)
+    and generates an extra key for census tract data. Drops identifiable address
+    keys from the original data.
+
+    If a given address is invalid, `census_tract` is left blank.
+
+    If *invalidate_cache* is true, any attempt at loading cached data is
+    overridden.
+
+    Dumps the generated JSON data to stdout unless an *output* file path is
+    given.
+
+    TODO keep_zipcode
     """
     address = address_data_json_record(record, address_map)
     LOG.info(f"Currently geocoding address {address}.")
@@ -226,6 +246,8 @@ def address_data_json_record(record: dict, address_map: dict) -> dict:
     Given a *record* from a JSON file, subset to address-relevant keys
     noted by the *address_map* and return these relevant keys separately.
 
+    Raises a :class:`AddressTranslationError` if the *address_map* contains
+    keys not present in the given *record*.
     Raises a :class:`NoAddressDataFoundError` if the data can not be subset.
     """
     address_keys = list(filter(None, address_map.values()))
@@ -252,14 +274,14 @@ def census_tract_json_record(response: dict, tracts) -> str:
 
     return latlng_to_polygon(latlng, tracts)
 
-def load_csv_or_excel(filepath: str) -> pd.DataFrame:
+def load_csv_or_excel(filename: str) -> pd.DataFrame:
     """
-    Given a *filepath* to a CSV or XLS/XLSX file, returns it as a DataFrame.
+    Given a *filename* to a CSV or XLS/XLSX file, returns it as a DataFrame.
     """
-    if filepath.endswith('.csv'):
-        df = pd.read_csv(filepath)
+    if filename.endswith('.csv'):
+        df = pd.read_csv(filename)
     else:
-        df = pd.read_excel(filepath)
+        df = pd.read_excel(filename)
     return df
 
 def address_data_csv_or_excel(df: pd.DataFrame, address_map: dict) -> pd.Series:
@@ -304,9 +326,12 @@ def geocode_address_csv_or_excel(address: pd.DataFrame, cache: TTLCache,
 
 def geocode_uncached_address(response: dict, std_address: dict) -> dict:
     """
-    TODO Not in cache. look up.
-
-    # Invalid address, try again
+    Given a an empty *response* that did not come from the cache for a given
+    *std_address*, looks it up the *std_address* using the SmartyStreets US
+    address API. If after this initial lookup, the API response is still empty,
+    the address was considered invalid. A second attempt is then made to lookup
+    the address using the SmartyStreets extract address API. The response,
+    whether still empty or not, is returned at the end.
     """
     if type(response) == dict:  # Was stored in cache
         return response
@@ -334,12 +359,10 @@ def census_tract_csv_or_excel(response: pd.DataFrame, tracts) -> pd.Series:
 
 def dump_csv_or_excel(df: pd.DataFrame, output: str):
     """
-    TODO
+    Given a DataFrame *df*, prints it to a given *output* filename. If *output*
+    is empty, prints *df* to stdout.
     """
-    if output:
-        df.to_csv(output, index=False)
-    else:
-        print(df.to_csv(index=False))
+    df.to_csv(output, index=False) if output else print(df.to_csv(index=False))
 
 def smartystreets_client_builder():
     """
@@ -354,7 +377,8 @@ def smartystreets_client_builder():
 
 def load_or_create_cache() -> TTLCache:
     """
-    TODO
+    Tries to load a pickled cache from the filepath `cache.pickle`. If a cache
+    is not found at this location, creates a new one. Returns the cache.
     """
     try:
         cache = pickle.load(open('cache.pickle', mode='rb'))
@@ -365,7 +389,9 @@ def load_or_create_cache() -> TTLCache:
 
 def check_cache(address: dict, cache: TTLCache) -> dict:
     """
-    TODO
+    Given an *address* and a *cache*, checks if the *cache* exists. If it does,
+    returns the given value of the *address* key in the *cache*. Returns nothing
+    if the *address* key does not exist in the *cache*.
     """
     if cache:
         try:
@@ -376,11 +402,12 @@ def check_cache(address: dict, cache: TTLCache) -> dict:
 
 def save_to_cache(standardized_address: dict, response: dict, cache: TTLCache):
     """
-    Store item in cache, possibly overwriting existing key
-    TODO
+    Given a *standardized_address* and its related *response* from the
+    SmartyStreets API, stores them as a key-value pair in the given *cache*,
+    overwriting the value for the existing *standardized_address* key if it
+    already existed in the *cache*.
     """
     cache[json.dumps(standardized_address)] = response
-    return cache
 
 def save_cache(cache: TTLCache):
     """ Given a *cache*, saves it to a hard-coded file `cache.pickle`. """
@@ -413,16 +440,15 @@ def lookup_address(address: dict) -> dict:
     if not result:
         return {}
 
-    first_candidate = result[0]
-    return {
-        "lat": first_candidate.metadata.latitude,
-        "lng": first_candidate.metadata.longitude
-    }
+    return first_candidate_data(result)
 
 def us_street_lookup(address: dict) -> Lookup:
     """
     Creates and returns a SmartyStreets US Street API Lookup object for a given
     *address*.
+
+    Raises a :class:`InvalidAddressMappingError` if a Lookup property from the
+    SmartyStreets geocoding API is not present in the given *address* data.
     """
     lookup = Lookup()
     try:
@@ -489,19 +515,28 @@ def extract_address(address: dict):
 
     for address in addresses:
         if len(address.candidates) > 0:
-            first_candidate = address.candidates[0]
-            return {
-                'zipcode': first_candidate.components.zipcode,  # TODO
-                'plus4_code': first_candidate.components.plus4_code,
-                'lat': first_candidate.metadata.latitude,
-                'lng': first_candidate.metadata.longitude
-            }
+            result = address.candidates
+            return first_candidate_data(result)
     return {}
+
+def first_candidate_data(result) -> dict:
+    """
+    Given an address response from SmartyStreets geocoding API, parse the
+    lat/lng information and return it.
+    """
+    first_candidate = result[0]
+    return {
+        'lat': first_candidate.metadata.latitude,
+        'lng': first_candidate.metadata.longitude,
+        #'zipcode': first_candidate.components.zipcode,  # TODO
+        #'plus4_code': first_candidate.components.plus4_code
+    }
 
 def latlng_to_polygon(latlng: list, polygons):
     """
     Find the first polygon in *polygons* (loaded from file) which contains the
-    *latlng* and return the polygon, else None.
+    *latlng* and return the polygon GEOID (the nationally-unique census tract
+    identifier), else None.
     """
     # Ye olde lat/lng vs. lng/lat schism rears its head.
     lat, lng = latlng
@@ -510,7 +545,6 @@ def latlng_to_polygon(latlng: list, polygons):
 
     for polygon in polygons:
         if polygon["shape"].contains(point):
-            # GEOID is the nationally-unique tract identifier
             return polygon.get("properties", {}).get("GEOID")
 
     LOG.warning(f"Failed to find tract for {latlng}.")
@@ -538,11 +572,9 @@ class UnsupportedFileExtensionError(ValueError):
 
 class InvalidAddressMappingError(KeyError):
     """
-    Base class for errors related to the address mapping from config.
-
-    *address_keys* and *address_map* can be used by child classes for custom
-    error messages.
-
+    Raised by :func:`us_street_lookup` when a an *address_key* used in the
+    SmartyStreets geocoding API Lookup object is not present in the data to be
+    transformed.
     """
     def __init__(self, address_key):
         self.address_key = address_key
@@ -556,8 +588,9 @@ class InvalidAddressMappingError(KeyError):
 
 class AddressTranslationError(InvalidAddressMappingError):
     """
-    Raised by :func:`us_street_lookup` when a given *api_map* contains a key
-    with a truthy value but the key is not present among the given address keys.
+    Raised by :func:`address_data_json_record` and
+    :func:`address_data_csv_or_excel` when a given key in the *api_map* does not
+    exist in the given *address_keys*.
     """
     def __init__(self, address_keys, api_map):
         self.address_keys = address_keys
@@ -582,9 +615,9 @@ class AddressTranslationError(InvalidAddressMappingError):
 
 class NoAddressDataFoundError(InvalidAddressMappingError):
     """
-    Raised by :func:`process_json` or :func:`process_csv_or_excel` when the
-    address configuration from `config` does not map to any keys or columns on
-    the given data.
+    Raised by :func:`address_data_json_record` and
+    :func:`address_data_csv_or_excel` when no keys from the given
+    *data_key_names* can be mapped to values in the given *address_map*.
     """
     def __init__(self, data_key_names, address_map):
         self.data_key_names = data_key_names
