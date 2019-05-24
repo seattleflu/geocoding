@@ -405,13 +405,15 @@ def us_street_lookup(address: dict) -> Lookup:
     *address*.
     """
     lookup = Lookup()
-
-    lookup.street = address['street']
-    lookup.street2 = address['street2']
-    lookup.secondary = address['secondary']
-    lookup.city = address['city']
-    lookup.state = address['state']
-    lookup.zipcode = address['zipcode']
+    try:
+        lookup.street = address['street']
+        lookup.street2 = address['street2']
+        lookup.secondary = address['secondary']
+        lookup.city = address['city']
+        lookup.state = address['state']
+        lookup.zipcode = address['zipcode']
+    except KeyError as e:
+        raise InvalidAddressMappingError(e)
 
     lookup.candidates = 1
     lookup.match = "Invalid"  # Most permissive
@@ -522,9 +524,14 @@ class InvalidAddressMappingError(KeyError):
     error messages.
 
     """
-    def __init__(self, address_keys: list, address_map: dict):
-        self.address_keys = address_keys
-        self.address_map = address_map
+    def __init__(self, address_key):
+        self.address_key = address_key
+
+    def __str__(self):
+        return dedent(f"""
+        {self.address_key} not found in the address mapping.
+        Is there an error in your `config.py`?
+        """)
 
 
 class AddressTranslationError(InvalidAddressMappingError):
@@ -532,6 +539,10 @@ class AddressTranslationError(InvalidAddressMappingError):
     Raised by :func:`us_street_lookup` when a given *api_map* contains a key
     with a truthy value but the key is not present among the given address keys.
     """
+    def __init__(self, address_keys, api_map):
+        self.address_keys = address_keys
+        self.api_map = api_map
+
     def __str__(self):
         return dedent(f"""
             The address map contains values not present in the given address.
@@ -554,18 +565,22 @@ class NoAddressDataFoundError(InvalidAddressMappingError):
     address configuration from `config` does not map to any keys or columns on
     the given data.
     """
+    def __init__(self, data_key_names, address_map):
+        self.data_key_names = data_key_names
+        self.address_map = address_map
+
     def __str__(self):
         return dedent(f"""\n
-            Could not find any address data using the address mapping:
-                {json.dumps(self.address_map, indent=16)}
-            These keys were considered when looking for an address:
-                {list(self.address_keys)}
-
+            Could not find any address data among the following key names:
+                {list(self.address_map.values())}
+            The given keys were:
+                {list(self.data_key_names)}
             Did you forget to provide an institution or a custom configuration?
             Please check your address mapping in `config.py` or run
                 `src/address_to_census_tract.py --help`
             and try again.
             """)
+
 
 if __name__ == '__main__':
     address_to_census_tract()
