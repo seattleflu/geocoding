@@ -1,19 +1,22 @@
 # Geocoding addresses into 2016 Census tracts
 
-`address_to_census_tract.py` prototypes address to Census tract conversion.  It uses a two-step process:
+`.src/address_to_census_tract.py` prototypes address to Census tract conversion.  It uses a two-step process:
 
 1. Geocode a given single-line address to a (latitude, longitude) pair using a
    remote (forward) geocoding service.
-   
+
    We're currently using SmartyStreets' service, but this is swappable.  The
    important point is the quality and robustness of the geocoding given dirty
    data.  Even rough geocoding results can be useful though, as Census tracts
    are fairly large.  I believe that as long as we submit addresses free of
    any linkage to other data, we can use a commercially-available geocoding
    service without PHI concerns, c.f.  [discussion on
-   #data-transfer](https://seattle-flu-study.slack.com/archives/CDTUFFQCU/p1544570425008700). 
-   To use SmartyStreet's geocoding service, users must [register at their website](http://smartystreets.com/) and add their authentication keys as environment 
-   variables (see the [conda documentation](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#saving-environment-variables) for help).
+   #data-transfer](https://seattle-flu-study.slack.com/archives/CDTUFFQCU/p1544570425008700).
+
+   To use SmartyStreet's geocoding service, users must [register at their
+   website](http://smartystreets.com/) and add their authentication keys as
+   environment variables (see the [conda
+   documentation](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#saving-environment-variables) for help).
 
 2. Find the Census tract polygon containing the geocoded (latitude, longitude).
 
@@ -61,8 +64,8 @@ Stored in the `data/` directory.
 
 ## Development
 
-If you have conda installed, then simply install the project dependencies using 
-`conda env create -f geocoding_env_conda.yaml`. There is one additional 
-requirement not available through conda that needs to be installed. While 
-inside of your `geocoding` conda environment, please run 
+If you have conda installed, then simply install the project dependencies using
+`conda env create -f geocoding_env_conda.yaml`. There is one additional
+requirement not available through conda that needs to be installed. While
+inside of your `geocoding` conda environment, please run
 `pip install smartystreets-python-sdk`.
