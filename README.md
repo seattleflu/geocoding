@@ -1,6 +1,6 @@
 # Geocoding addresses into 2016 Census tracts
 
-`src/address_to_census_tract.py` performs address to Census tract conversion.  It uses a two-step process:
+`./src/deidentify/address_to_census_tract.py` performs address to Census tract conversion.  It uses a two-step process:
 
 1. Geocode a given single-line address to a (latitude, longitude) pair using a remote (forward) 
    geocoding service.
@@ -65,10 +65,8 @@ from Thomas.
 
 You can either [add persistent environment variables to your conda environment] or declare
 environment variables at the command line via:
-    ```
-    export SMARTYSTREETS_AUTH_ID='UNIQUE_AUTHENTICATION_ID'
-    export SMARTYSTREETS_AUTH_TOKEN='UNIQUE_AUTHENTICATION_TOKEN'
-    ```
+    `export SMARTYSTREETS_AUTH_ID='UNIQUE_AUTHENTICATION_ID'`
+    `export SMARTYSTREETS_AUTH_TOKEN='UNIQUE_AUTHENTICATION_TOKEN'`
 
 [conda]: https://conda.io/en/latest/
 [add persistent environment variables to your conda environment]: 

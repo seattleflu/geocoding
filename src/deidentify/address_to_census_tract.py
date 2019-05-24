@@ -39,9 +39,11 @@ LOG = logging.getLogger(__name__)
 CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
 
 @click.command()
-@click.argument('filename', required=True, type=click.Path(exists=True))
-@click.option('-i', '--institute', type=click.Choice(['uw', 'sch', 'default']), 
-    default='default', help='The acronym (lowercase) representing the institution.')
+@click.argument('filename', metavar="<filename>" required=True, 
+    type=click.Path(exists=True))
+@click.option('-i', '--institute', metavar="<institute>" 
+    type=click.Choice(['uw', 'sch', 'default']), default='default', 
+    help='The acronym (lowercase) representing the institution.')
 @click.option('-s', '--street', default=None, 
     help='Key name for address street. Can also accept an entire address as free text')
 @click.option('--street2', default=None, 
@@ -54,7 +56,7 @@ CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
     help='Key name for address state')
 @click.option('-z', '--zipcode', default=None, 
     help='Key name for address zipcode')
-@click.option('-o', '--output', default=None, 
+@click.option('-o', '--output', metavar="<output>", default=None, 
     help='Name of output file. Defaults to None, printing results to stdout.')
     # TODO validate output extension?
     # TODO allow users to enter csv and return json? and vice versa
@@ -66,23 +68,23 @@ CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
 def address_to_census_tract(filename, institute, output, invalidate_cache, 
                             keep_zipcode, **kwargs):
     """
-    Given a *filename*, de-identifies addresses in a CSV or XLSX document by
+    Given a <filename>, de-identifies addresses in a CSV or XLSX document by
     converting them into census tracts. Prints a CSV or XLSX document with the
     original address information removed but with census tract added. 
 
     Address configuration is imported from `config.py` according to the given 
-    *institute*. The default is to only look for one column or key named
+    <institute>. The default is to only look for one column or key named
     'address'. Institutional configurations can be modified in `config.py`. 
 
     Address configurations can also be given on-the-fly via several keyword
     options. These options begin with the help text 'Key name for...'. 
 
     By default, the resulting data is printed to stdout. This can be overridden
-    with the *output* option for a new filename. Currently, only two possible
-    *output* file extensions have been implemented: JSON and CSV. If providing
+    with the <output> option for a new filename. Currently, only two possible
+    <output> file extensions have been implemented: JSON and CSV. If providing
     address in a JSON file, please use a `.json` file extension in the given
-    *output* option. Similarly, if providing address data in CSV or Excel
-    format, please use a `.csv` file extension in the given *output* option.
+    <output> option. Similarly, if providing address data in CSV or Excel
+    format, please use a `.csv` file extension in the given <output> option.
 
     To reduce the total number of requests sent to SmartyStreets' geocoding API,
     responses (including negative response) are cached. To override the cache
