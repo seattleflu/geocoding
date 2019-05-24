@@ -1,0 +1,31 @@
+Combined address/pii deidentification
+
+
+Idea: scope functions tighter
+* for example, be able to pass data from memory into next function instead of
+only reading from filepath
+* create more general methods as part of a library
+
+
+Example CLI
+
+src/deidentify {filename} --address --pii
+src/deidentify {filename} --address -i uw
+src/deidentify {filename} --pii -i sch --name PAT_NAME --dob PAT_DOB --gender \
+    PAT_GENDER --zipcode ZIP
+    // zipcode would not be an acceptable/usable argument if used in conjunction \
+    // w/ address deidentification
+src/deidentify {filename} --address -i uw -o {output filename}
+src/deidentify {filename} --street STREET --street2 STREET2 --secondary \
+    STREET3 --city CITY --state STATE --zipcode ZIP --invalidate_cache --name \
+    NAME --gender GENDER --birth-date DOB
+
+OR
+
+src/deidentify {filename} --address_only
+    // This could not be run with the --pii_only flag, too.
+src/deidentify {filename}
+    // This would run both PII (if found) and address (if found). If not found \
+    // either, raise error.
+    // Geocoding would be run first and would save 9-digit zipcode. This zipcode
+    // would be dumped after running through pii deidentification.

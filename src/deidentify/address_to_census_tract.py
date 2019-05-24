@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 """
-Takes a file containing addresses, one per line, and returns the data with a new
-    column or key containing an associated census tract. Removes the original
-    identifying address data.
+Takes a file containing a list of addresses, one per line, and returns their
+associated census tract within Washington.
 
 To run:
-    `./src/address_to_census_tract.py {filepath} --institute {institution}`
+    `./src/deidentify/address_to_census_tract.py {filename} --institute {institution}`
     or
-    `./src/address_to_census_tract.py {filepath} --street {street column}`
+    `./src/deidentify/address_to_census_tract.py {filename} --street {street column}`
 
 Help:
-    `./src/address_to_census_tract.py --help`
+    `./src/deidentify/address_to_census_tract.py --help`
 
 Examples:
-    `./src/address_to_census_tract.py data/test/testset.json --institute default`
-    `./src/address_to_census_tract.py data/test/testset.csv -s address`
+    `./src/deidentify/address_to_census_tract.py data/test/testset.json --institute default`
+    `./src/deidentify/address_to_census_tract.py data/test/testset.csv -s address`
 
 Requirements:
     shapely
@@ -61,8 +60,11 @@ CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
     # TODO allow users to enter csv and return json? and vice versa
 @click.option('--invalidate_cache', is_flag=True,
     help='Optional flag for invalidating cached responses')
+@click.option('--keep_zipcode', is_flag=True,
+    help='Optional flag for keeping zipcode from geocoded address')
 
-def address_to_census_tract(filepath, institute, output, invalidate_cache, **kwargs):
+def address_to_census_tract(filepath, institute, output, invalidate_cache,
+                            keep_zipcode, **kwargs):
     """
     Given a *filepath*, de-identifies addresses in a CSV or XLSX document by
     converting them into census tracts. Prints a CSV or XLSX document with the
@@ -85,10 +87,17 @@ def address_to_census_tract(filepath, institute, output, invalidate_cache, **kwa
     To reduce the total number of requests sent to SmartyStreets' geocoding API,
     responses (including negative response) are cached. To override the cache
     for a set of data, provide the `--invalidate_cache` flag at runtime.
+
+    TODO keep_zipcode
     """
 
     # TODO validate that no two keywords have the same value
 
+    address_to_census_tract_inner(filepath, institute, output, invalidate_cache,
+                                  keep_zipcode, **kwargs)
+
+def address_to_census_tract_inner(filepath, institute, output, invalidate_cache,
+                                  keep_zipcode, **kwargs):
     custom_address_config = not all(arg is None for arg in kwargs.values())
 
     if custom_address_config:
@@ -98,9 +107,9 @@ def address_to_census_tract(filepath, institute, output, invalidate_cache, **kwa
         LOG.info(f"Using «{institute}» institutional configuration.")
 
     if filepath.endswith('.json'):
-        process_json(filepath, output, address_map, invalidate_cache)
+        process_json(filepath, output, address_map, invalidate_cache, keep_zipcode)
     elif filepath.endswith(('.csv', '.xlsx', '.xls')):
-        process_csv_or_excel(filepath, output, address_map, invalidate_cache)
+        process_csv_or_excel(filepath, output, address_map, invalidate_cache, keep_zipcode)
     else:
         raise UnsupportedFileExtensionError(dedent(f"""
         Unsupported file extension for file «{filepath}».
@@ -112,7 +121,7 @@ def address_to_census_tract(filepath, institute, output, invalidate_cache, **kwa
     """))
 
 def process_json(file_path: str, output: str, address_map: dict,
-                 invalidate_cache: bool):
+                 invalidate_cache: bool, keep_zipcode: bool):
     """
     Given a *file_path* to a JSON file, processes the relevant keys containing
     address data (from *address_map*) and generates an extra key for census
@@ -127,7 +136,7 @@ def process_json(file_path: str, output: str, address_map: dict,
     Dumps the generated JSON data to stdout unless an *output* file path is
     given.
 
-    TODO docstring invalidate_cache
+    TODO docstring invalidate_cache, keep_zipcode
     """
 
     with open(file_path, encoding = "UTF-8") as file:
@@ -139,7 +148,7 @@ def process_json(file_path: str, output: str, address_map: dict,
     to_save = []
     for record in data:
         result = process_json_record(record, address_map, tracts, cache,
-                                     invalidate_cache)
+                                     invalidate_cache, keep_zipcode)
         if output:
             to_save.append(result)
         else:
@@ -151,7 +160,7 @@ def process_json(file_path: str, output: str, address_map: dict,
         json.dump(to_save, open(output, mode='w'))
 
 def process_csv_or_excel(file_path: str, output: str, address_map: dict,
-                         invalidate_cache: bool):
+                         invalidate_cache: bool, keep_zipcode: bool):
     """
     Given a *file_path* to a CSV or Excel file, processes the relevant columns
     containing address data (from *address_map*) and generates an extra column
@@ -164,7 +173,7 @@ def process_csv_or_excel(file_path: str, output: str, address_map: dict,
     To minimize costs, an address should only be looked up once (via
     `lookup_address()`).
 
-    # TODO docstring invalidate_cache
+    # TODO docstring invalidate_cache, keep_zipcode
     """
     df = load_csv_or_excel(file_path)
     tracts = load_geojson("data/geojsons/Washington_2016.geojson")
@@ -178,14 +187,18 @@ def process_csv_or_excel(file_path: str, output: str, address_map: dict,
     response.apply(lambda x: save_to_cache(x['std_address'], x['response'], cache), axis=1)
 
     # Drop identifiable address columns
-    df = df[[ col for col in list(df) if col not in address_map.values() ]]
+    drop_columns = list(address_map.values())
+    keep_zipcode and drop_columns.remove(address_map['zipcode'])
+
+    df = df[[ col for col in list(df) if col not in drop_columns ]]
     df['census_tract'] = census_tract_csv_or_excel(response, tracts)
 
     dump_csv_or_excel(df, output)
     save_cache(cache)
 
 def process_json_record(record: dict, address_map: dict, tracts,
-                        cache: TTLCache, invalidate_cache: bool) -> dict:
+                        cache: TTLCache, invalidate_cache: bool,
+                        keep_zipcode: bool) -> dict:
     """
     Given a *record* from a JSON file,
     TODO docstring
@@ -201,7 +214,10 @@ def process_json_record(record: dict, address_map: dict, tracts,
     save_to_cache(std_address, response, cache)
 
     # Drop identifiable address keys and add census tract
-    result = {k: record[k] for k in record if k not in address_map.values()}
+    drop_keys = list(address_map.values())
+    keep_zipcode and drop_keys.remove(address_map['zipcode'])
+
+    result = {k: record[k] for k in record if k not in drop_keys}
     result["census_tract"] = census_tract_json_record(response, tracts)
     return result
 
@@ -552,15 +568,16 @@ class AddressTranslationError(InvalidAddressMappingError):
             The address map contains values not present in the given address.
 
             Address keys are:
-                {list(self.address_keys)}
-
-            No match found for
-                {[ self.address_map[key] for key in self.address_map if self.address_map[key]
-                   and self.address_map[key] not in self.address_keys ]}
+                {self.address_keys}
 
             The address mapping is:
-                {json.dumps(self.address_map, indent=16)}
-            """)
+                {self.api_map}
+
+            Did you forget to provide an institution or a custom configuration?
+            Please check your address mapping in `config.py` or run
+                `src/address_to_census_tract.py --help`
+            and try again.
+                """)
 
 
 class NoAddressDataFoundError(InvalidAddressMappingError):
@@ -580,7 +597,7 @@ class NoAddressDataFoundError(InvalidAddressMappingError):
             The given keys were:
                 {list(self.data_key_names)}
             Did you forget to provide an institution or a custom configuration?
-            Please check your address mapping in `config.py` or run
+            If not, please check your address mapping in `config.py` or run
                 `src/address_to_census_tract.py --help`
             and try again.
             """)

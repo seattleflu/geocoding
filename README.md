@@ -1,6 +1,6 @@
 # Geocoding addresses into 2016 Census tracts
 
-`.src/address_to_census_tract.py` prototypes address to Census tract conversion.  It uses a two-step process:
+`src/deidentify/address_to_census_tract.py` prototypes address to Census tract conversion.  It uses a two-step process:
 
 1. Geocode a given single-line address to a (latitude, longitude) pair using a
    remote (forward) geocoding service.
