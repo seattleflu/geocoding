@@ -34,8 +34,11 @@ from smartystreets_python_sdk.us_street import Lookup
 from smartystreets_python_sdk.us_extract import Lookup as ExtractLookup
 import config
 import click
+import pickle
+from cachetools import TTLCache
 
 LOG = logging.getLogger(__name__)
+CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
 
 @click.command()
 @click.argument('filepath', required=True, type=click.Path(exists=True))
@@ -52,7 +55,6 @@ LOG = logging.getLogger(__name__)
 @click.option('--state', default=None,
     help='Key name for address state')
 @click.option('-z', '--zipcode', default=None,
-    help='Key name for address zipcode')
 
 
 def address_to_census_tract(filepath, institute, **kwargs):
@@ -121,15 +123,36 @@ def process_json(file_path: str, address_map: dict):
         data = [ json.loads(line) for line in file ]
 
     tracts = load_geojson("data/geojsons/Washington_2016.geojson")
+    cache = load_or_create_cache()
 
     for record in data:
-        # Subset to address-relevant columns only and store separately
+        # Subset to address-relevant columns (from config) and store separately
         address = { key: record[key] for key in record if key in address_map.values() }
-
         if not address:
             raise NoAddressDataFoundError(record.keys(), address_map)
 
-        response = lookup_address(address, address_map)
+        std_address = standardize_address(address, address_map)
+        response = check_cache(cache, std_address)
+
+        if not response:  # Not in cache. Look up.
+            response = lookup_address(std_address)
+
+        if not response:  # Invalid address. Try again.
+            LOG.info(dedent(f"""
+            No match found for given address. Extracting address from text
+            """))
+            address_values = ', '.join([ str(val) for val in list(address.values()) if val ])
+            response = extract_address(address_values)  # TODO talk about assumptions
+            print(address_values)
+
+        if not response:
+            LOG.warning(dedent(f"""
+            Could not look up address {address}.
+            """))
+        else:
+            # Store item in cache, possibly overwriting existing key
+            cache[json.dumps(std_address)] = response
+
         latlng = None
         tract = None
 
@@ -149,19 +172,20 @@ def process_json(file_path: str, address_map: dict):
 
         print(json.dumps(result))
 
+    save_cache(cache)
+
 def process_csv_or_excel(file_path: str, address_map: dict):
     """
     Given a *file_path* to a CSV or Excel file, processes the relevant columns
     containing address data (from *address_map*) and generates an extra column
-    census tract data. Raises a :class:`NoAddressDataFoundError` if the address
-    mapping is invalid and yields no matching columns on the address data.
+    census tract data.
 
     If a given address is invalid, `census_tract` is left blank.
 
     Saves the new table at `data/test/out.csv`.
 
     To minimize costs, an address should only be looked up once (via
-    :func:`lookup_address`).
+    `lookup_address()`).
     """
     if file_path.endswith('.csv'):
         df = pd.read_csv(file_path)
@@ -173,69 +197,24 @@ def process_csv_or_excel(file_path: str, address_map: dict):
     # Subset to address-relevant columns only and store separately
     address_columns = [ col for col in df.columns if col in address_map.values() ]
     if not address_columns:
-        raise NoAddressDataFoundError(df.columns, address_map)
+        raise NoAddressDataFoundError(df.columns(), address_map)
 
-    address = pd.Series(df[address_columns].to_dict(orient='records'))
-    response = pd.Series(address.apply(lambda x: lookup_address(x, address_map)))
+    address_data = df[address_columns]
+    address = pd.Series(address_data.to_dict(orient='records'))
+    std_address = address.apply(lambda x: standardize_address(x, address_map))
+    response = pd.Series(std_address.apply(lookup_address))
 
     # Extract lat/lng from response object
-    df['lat'] = response.apply(lambda x: x and x['lat'])
-    df['lng'] = response.apply(lambda x: x and x['lng'])
-    latlng = pd.Series(list(zip(df['lat'], df['lng'])))
+    lat = response.apply(lambda x: x and x['lat'])
+    lng = response.apply(lambda x: x and x['lng'])
+    latlng = pd.Series(list(zip(lat, lng)))
 
     df['census_tract'] = latlng.apply(lambda x: latlng_to_polygon(x, tracts))
 
     # Drop identifiable address columns
-    df = df.drop(columns=address_columns + ['lat', 'lng'])
+    df = df.drop(columns=address_columns)
     print(df.to_csv(index=False))
 
-def lookup_address(address: dict, address_map: dict) -> dict:
-    """
-    Given an *address*, returns a dict containing a standardized address and
-    lat/long coordinates from the first address candidate from SmartyStreets
-    US Street geocoding API.
-
-    Note that this functionality works regardless of whether a given address is
-    broken into pieces (street, city, zipcode, etc.) or is a free text lookup
-    (and only the `street` parameter is used).
-    """
-    client = smartystreets_client_builder().build_us_street_api_client()
-
-    lookup = us_street_lookup(address, address_map)
-    if not lookup.street:
-        LOG.warning(dedent(f"""
-        No given street address for {address}.
-        Currently lookups are only possible with a street address.
-        """))
-        return
-
-        lookup = Lookup()
-
-    lookup.street = address
-    lookup.candidates = 1
-    lookup.match = "Invalid"  # Most permissive
-
-    try:
-        client.send_lookup(lookup)
-    except exceptions.SmartyException as err:
-        LOG.exception(err)
-        return
-
-    result = lookup.result
-    if not result:  # Invalid address. Try again.
-        LOG.info(dedent(f"""
-        No match found for given address. Extracting address from text
-        """))
-        address_values = ', '.join([ str(val) for val in list(address.values()) if val ])
-        result = extract_address(address_values)
-        if not result:
-            LOG.warning(dedent(f"""
-            Could not look up address {address}.
-            """))
-            return
-
-    return {"lat": result[0].metadata.latitude,
-            "lng": result[0].metadata.longitude}
 
 def smartystreets_client_builder():
     """
@@ -248,31 +227,105 @@ def smartystreets_client_builder():
 
     return ClientBuilder(StaticCredentials(auth_id, auth_token))
 
-def us_street_lookup(address: dict, api_map: dict) -> Lookup:
+def load_or_create_cache() -> TTLCache:
+    """
+    TODO
+    """
+    try:
+        cache = pickle.load(open('cache.pickle', mode='rb'))
+    except FileNotFoundError:
+        LOG.info("Couldn't find an existing cache file. Creating new cache.")
+        cache = TTLCache(maxsize=100000, ttl=CACHE_TTL)
+    return cache
+
+def check_cache(cache: TTLCache, address: dict) -> dict:
+    """
+    TODO
+    """
+    if cache:
+        try:
+            return cache[json.dumps(address)]
+        except KeyError:
+            pass
+
+def save_cache(cache: TTLCache):
+    """
+    TODO
+    """
+    pickle.dump(cache, open('cache.pickle', mode='wb'))
+
+def lookup_address(address: dict) -> dict:
+    """
+    Given an *address* matching the SmartyStreets API, returns a dict containing
+    a standardized address and lat/long coordinates from SmartyStreet's US
+    Street geocoding API.
+
+    Note that this functionality works regardless of whether a given address is
+    broken into pieces (street, city, zipcode, etc.) or is a free text lookup
+    (and only the `street` parameter is used).
+    """
+    client = smartystreets_client_builder().build_us_street_api_client()
+    result = None
+
+    lookup = us_street_lookup(address)
+    if not lookup.street:
+        LOG.warning(dedent(f"""
+        No given street address for {address}.
+        Currently lookups are only possible with a street address."""))
+        return
+
+    client.send_lookup(lookup)
+    result = lookup.result
+
+    if result:
+        first_candidate = result[0]
+
+        return {
+            "lat": first_candidate.metadata.latitude,
+            "lng": first_candidate.metadata.longitude
+        }
+
+def us_street_lookup(address: dict) -> Lookup:
     """
     Creates and returns a SmartyStreets US Street API Lookup object for a given
-    *address*. The *address* keys are mapped to the SmartyStreets API using the
-    given *api_map*.
-
-    Raises a AddressTranslationNotFoundError if a mapped key from *api_map*
-    does not exist in *address*.
+    *address*.
     """
-    truthy_api_map_values = set( api_map[key] for key in api_map if api_map[key] )
-    if not truthy_api_map_values.issubset(set(address.keys())):
-        raise AddressTranslationNotFoundError(address.keys(), api_map)
-
     lookup = Lookup()
 
-    lookup.street = api_map['street'] and address[api_map['street']]
-    lookup.street2 = api_map['street2'] and address[api_map['street2']]
-    lookup.secondary = api_map['secondary'] and address[api_map['secondary']]
-    lookup.city = api_map['city'] and address[api_map['city']]
-    lookup.state = api_map['state'] and address[api_map['state']]
-    lookup.zipcode = api_map['zipcode'] and address[api_map['zipcode']]
+    lookup.street = address['street']
+    lookup.street2 = address['street2']
+    lookup.secondary = address['secondary']
+    lookup.city = address['city']
+    lookup.state = address['state']
+    lookup.zipcode = address['zipcode']
 
     lookup.candidates = 1
     lookup.match = "Invalid"  # Most permissive
     return lookup
+
+def standardize_address(address: dict, api_map: dict) -> dict:
+    """
+    Returns an address in a format that SmartyStreets API expects. The given
+    *address* keys are mapped to the SmartyStreets API using the given
+    *api_map*.
+
+    Raises a KeyError if a mapped key from *api_map* does not exist in
+    *address*.
+    """
+    if not set(address.keys()).issubset(api_map.values()):
+        raise AddressTranslationNotFoundError(address.keys(), api_map)
+
+    for key in address:
+        address[key] = address[key].upper().strip()
+
+    return {
+        'street': api_map['street'] and address[api_map['street']],
+        'street2': api_map['street2'] and address[api_map['street2']],
+        'secondary': api_map['secondary'] and address[api_map['secondary']],
+        'city': api_map['city'] and address[api_map['city']],
+        'state': api_map['state'] and address[api_map['state']],
+        'zipcode': api_map['zipcode'] and address[api_map['zipcode']]
+    }
 
 def extract_address(text: str):
     """
@@ -290,8 +343,14 @@ def extract_address(text: str):
 
     result = client.send(lookup)
     addresses = result.addresses
+
     for address in addresses:
-        return address.candidates
+        first_candidate = address.candidates[0]
+
+        return {
+            'lat': first_candidate.metadata.latitude,
+            'lng': first_candidate.metadata.longitude
+        }
 
 def latlng_to_polygon(latlng: list, polygons):
     """
