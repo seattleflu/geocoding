@@ -24,7 +24,6 @@ Requirements:
 """
 import json
 import os
-from sys import argv
 from textwrap import dedent
 from shapely.geometry import shape, Point
 import logging
@@ -42,8 +41,8 @@ CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
 
 @click.command()
 @click.argument('filepath', required=True, type=click.Path(exists=True))
-@click.option('-i', '--institute', type=click.Choice(['UW', 'default']),
-    default='default', help='The acronym representing the institution.')
+@click.option('-i', '--institute', type=click.Choice(['uw', 'sch', 'default']),
+    default='default', help='The acronym (lowercase) representing the institution.')
 @click.option('-s', '--street', default=None,
     help='Key name for address street. Can also accept an entire address as free text')
 @click.option('--street2', default=None,
@@ -121,8 +120,6 @@ def process_json(file_path: str, output: str, address_map: dict):
 
     Dumps the generated JSON data to stdout unless an *output* file path is
     given.
-
-    TODO too long of a function
     """
 
     with open(file_path, encoding = "UTF-8") as file:
@@ -133,49 +130,7 @@ def process_json(file_path: str, output: str, address_map: dict):
     to_save = []
 
     for record in data:
-        # Subset to address-relevant columns (from config) and store separately
-        address = { key: record[key] for key in record if key in address_map.values() }
-        if not address:
-            raise NoAddressDataFoundError(record.keys(), address_map)
-
-        std_address = standardize_address(address, address_map)
-        response = check_cache(cache, std_address)
-
-        if not response:  # Not in cache. Look up.
-            response = lookup_address(std_address)
-
-        if not response:  # Invalid address. Try again.
-            LOG.info(dedent(f"""
-            No match found for given address. Extracting address from text
-            """))
-            address_values = ', '.join([ str(val) for val in list(address.values()) if val ])
-            response = extract_address(address_values)  # TODO talk about assumptions
-            print(address_values)
-
-        if not response:
-            LOG.warning(dedent(f"""
-            Could not look up address {address}.
-            """))
-        else:
-            # Store item in cache, possibly overwriting existing key
-            cache[json.dumps(std_address)] = response
-
-        latlng = None
-        tract = None
-
-        # Extract lat/lng from response object
-        if response and response['lat'] and response['lng']:
-            latlng = [response['lat'], response['lng']]
-            tract = latlng_to_polygon(latlng, tracts)
-
-        else:
-            LOG.warning(dedent(f"""
-            Failed to geocode {address}.
-            """))
-
-        # Drop identifiable address keys
-        result = {k: record[k] for k in record if k not in address}
-        result["census_tract"] = tract
+        result = process_json_record(record, address_map, tracts, cache)
 
         if output:
             json.dump(result, open(output, mode='rb'))
@@ -196,44 +151,150 @@ def process_csv_or_excel(file_path: str, output: str, address_map: dict):
 
     Dumps the data to stdout unless an *output* file path is given.
 
-    # TODO too long
+    To minimize costs, an address should only be looked up once (via
+    `lookup_address()`).
     """
-    if file_path.endswith('.csv'):
-        df = pd.read_csv(file_path)
-    else:
-        df = pd.read_excel(file_path)
-
+    df = load_csv_or_excel(file_path)
     tracts = load_geojson("data/geojsons/Washington_2016.geojson")
     cache = load_or_create_cache()
 
-    # Subset to address-relevant columns (from config) and store separately
-    address_columns = [ col for col in df.columns if col in address_map.values() ]
-    if not address_columns:
-        raise NoAddressDataFoundError(df.columns(), address_map)
-    address_data = df[address_columns]
-    address = pd.Series(address_data.to_dict(orient='records'))
+    address = address_data_csv_or_excel(df, address_map)
+    address['std_address'] = address.apply(lambda x: standardize_address(x, address_map))
 
+    response = geocode_address_csv_or_excel(address, cache)
+
+    response.apply(lambda x: save_to_cache(x['std_address'], x['response'], cache), axis=1)
+
+    # Drop identifiable address columns
+    df = df[[ col for col in df.columns if col not in address_map.values() ]]
+    df['census_tract'] = census_tract_csv_or_excel(response, tracts)
+
+    dump_csv_or_excel(df, output)
+    save_cache(cache)
+
+def process_json_record(record: dict, address_map: dict, tracts,
+                        cache: TTLCache) -> dict:
+    """
+    Given a *record* from a JSON file,
+    TODO docstring
+    """
+    address = address_data_json_record(record, address_map)
+    LOG.info(f"Geocoding address {address}.")
+
+    std_address = standardize_address(address, address_map)
+    response = check_cache(std_address, cache)
+
+    if not response:  # Not in cache. Look up.
+        response = lookup_address(std_address)
+
+    if not response:  # Invalid address. Try again.
+        LOG.info(f"No match found. Extracting address from text.")
+        response = extract_address(std_address)
+
+    if not response:
+        LOG.warning(f"Could not look up address {address}.")
+
+    save_to_cache(std_address, response, cache)
+
+    # Drop identifiable address keys and add census tract
+    result = {k: record[k] for k in record if k not in address}
+    result["census_tract"] = census_tract_json_record(response, tracts)
+    return result
+
+def address_data_json_record(record: dict, address_map: dict) -> dict:
+    """
+    Given a *record* from a JSON file, subset to address-relevant keys
+    noted by the *address_map* and return these relevant keys separately.
+
+    Raises a :class:`NoAddressDataFoundError` if the data can not be subset.
+    """
+    address_keys = list(filter(None, address_map.values()))
+    try:
+        address = { key: record[key] for key in address_keys }
+    except KeyError:
+        raise AddressTranslationNotFoundError(record.keys(), address_map)
+
+    if not address:
+        raise NoAddressDataFoundError(record.keys(), address_map)
+    return address
+
+def census_tract_json_record(response: dict, tracts) -> str:
+    """
+    Extract lat/lng from *response* object and return the affiliated census
+    tract from the given *tracts* file of polygons
+    """
+    if not response or not (response['lat'] or response['lng']):
+        LOG.warning(dedent(f"""Failed to geocode address."""))
+        return
+
+    latlng = [response['lat'], response['lng']]
+    return latlng_to_polygon(latlng, tracts)
+
+def load_csv_or_excel(filepath: str) -> pd.DataFrame:
+    """
+    Given a *filepath* to a CSV or XLS/XLSX file, returns it as a DataFrame.
+    """
+    if filepath.endswith('.csv'):
+        df = pd.read_csv(filepath)
+    else:
+        df = pd.read_excel(filepath)
+    return df
+
+def address_data_csv_or_excel(df: pd.DataFrame, address_map: dict) -> pd.Series:
+    """
+    Given a pandas DataFrame *df*, subset to address-relevant columns
+    noted by the *address_map* and return these data separately.
+
+    Raises a :class:`NoAddressDataFoundError` if no columns resulted from
+    mapping the given data *df* to the API.
+
+    Raises a :class:`AddressTranslationNotFoundError` if the *address_map*
+    contains keys not present in the given data *df*.
+    """
+    address_columns = list(filter(None, address_map.values()))
+    if not address_columns:
+        raise NoAddressDataFoundError(df.columns, address_map)
+
+    try:
+        address_data = df[address_columns]
+    except KeyError:
+        raise AddressTranslationNotFoundError(list(df), address_map)
+
+    return pd.Series(address_data.to_dict(orient='records'))
+
+def geocode_address_csv_or_excel(address: pd.DataFrame, cache: TTLCache) -> pd.DataFrame:
+    """
+    TODO
+    """
     response = pd.DataFrame()
-    response['std_address'] = address.apply(lambda x: standardize_address(x, address_map))
+    response['std_address'] = address['std_address']
     # Check in cache first
     response['response'] = response['std_address'].apply(lambda x: check_cache(x, cache))
-    # Look up those not in cache
-    response['response'] = response.apply(lambda x: lookup_address(x['std_address'])
-                                            if not x['response'] else x['response'], axis=1)
-    # Look up those that failed the last time
-    response['response'] = response.apply(lambda x: extract_address(x['std_address'])
-                                            if not x['response'] else x['response'], axis=1)
 
-    # Extract lat/lng from response object
+    # Look up those not in cache
+    response['response'] = response.apply(lambda x: lookup_address(x['std_address']) \
+        if not x['response'] else x['response'], axis=1)
+    # Look up those that failed the last time
+    response['response'] = response.apply(lambda x: extract_address(x['std_address']) \
+        if not x['response'] else x['response'], axis=1)
+
+    return response
+
+def census_tract_csv_or_excel(response: pd.DataFrame, tracts) -> pd.Series:
+    """
+    Extract lat/lng from *response* DataFrame and return a pd.Series containing
+    the affiliated census tract from the given *tracts* file of polygons.
+    """
     lat = response['response'].apply(lambda x: x and x['lat'])
     lng = response['response'].apply(lambda x: x and x['lng'])
     latlng = pd.Series(list(zip(lat, lng)))
 
-    df['census_tract'] = latlng.apply(lambda x: latlng_to_polygon(x, tracts))
+    return latlng.apply(lambda x: latlng_to_polygon(x, tracts))
 
-    # Drop identifiable address columns
-    df = df.drop(columns=address_columns)
-
+def dump_csv_or_excel(df: pd.DataFrame, output: str):
+    """
+    TODO
+    """
     if output:
         df.to_csv(output, index=False)
     else:
@@ -261,7 +322,7 @@ def load_or_create_cache() -> TTLCache:
         cache = TTLCache(maxsize=100000, ttl=CACHE_TTL)
     return cache
 
-def check_cache(cache: TTLCache, address: dict) -> dict:
+def check_cache(address: dict, cache: TTLCache) -> dict:
     """
     TODO
     """
@@ -271,10 +332,17 @@ def check_cache(cache: TTLCache, address: dict) -> dict:
         except KeyError:
             pass
 
-def save_cache(cache: TTLCache):
+def save_to_cache(standardized_address: dict, response: dict, cache: TTLCache):
     """
+    Store item in cache, possibly overwriting existing key
     TODO
     """
+    if response:
+        cache[json.dumps(standardized_address)] = response
+    return cache
+
+def save_cache(cache: TTLCache):
+    """ Given a *cache*, saves it to a hard-coded file `cache.pickle`. """
     pickle.dump(cache, open('cache.pickle', mode='wb'))
 
 def lookup_address(address: dict) -> dict:
@@ -335,42 +403,49 @@ def standardize_address(address: dict, api_map: dict) -> dict:
     Raises a KeyError if a mapped key from *api_map* does not exist in
     *address*.
     """
-    if not set(address.keys()).issubset(api_map.values()):
-        raise AddressTranslationNotFoundError(address.keys(), api_map)
-
     for key in address:
-        address[key] = address[key].upper().strip()
+        address[key] = str(address[key]).upper().strip()
 
-    return {
-        'street': api_map['street'] and address[api_map['street']],
-        'street2': api_map['street2'] and address[api_map['street2']],
-        'secondary': api_map['secondary'] and address[api_map['secondary']],
-        'city': api_map['city'] and address[api_map['city']],
-        'state': api_map['state'] and address[api_map['state']],
-        'zipcode': api_map['zipcode'] and address[api_map['zipcode']]
-    }
+    standardized_address = {}
+    for key in api_map:
+        standardized_address[key] = api_map[key] and address[api_map[key]]
+    return standardized_address
 
-def extract_address(text: str):
+def extract_address(address: dict):
     """
-    Given arbitrary *text*, returns a result from the SmartyStreets US Extract
-    API containing information about an address connected to the text.
+    Given an *address*, converts it to text and returns a result from
+    the SmartyStreets US Extract API containing information about an address
+    connected to the text.
+
+    Assumes that *address* keys, where present, are sorted in the following
+    order:
+        * street
+        * street2
+        * secondary
+        * city
+        * state
+        * zipcode
 
     Note that this API is not consistent with the US Street API, and the lookup
     and responses must be handled differently.
-
-    Assumes addresses are given in the correct order # TODO enforce
     """
     client = smartystreets_client_builder().build_us_extract_api_client()
+    address_text = ', '.join([ str(val) for val in list(address.values()) if val ])
+
     lookup = ExtractLookup()
-    lookup.text = text
+    lookup.text = address_text
 
     result = client.send(lookup)
     addresses = result.addresses
 
     for address in addresses:
-        first_candidate = address.candidates[0]
+        if len(address.candidates) == 0:
+            return
 
+        first_candidate = address.candidates[0]
         return {
+            'zipcode': first_candidate.components.zipcode,  # TODO
+            'plus4_code': first_candidate.components.plus4_code,
             'lat': first_candidate.metadata.latitude,
             'lng': first_candidate.metadata.longitude
         }
@@ -391,9 +466,7 @@ def latlng_to_polygon(latlng: list, polygons):
             # GEOID is the nationally-unique tract identifier
             return polygon.get("properties", {}).get("GEOID")
 
-    LOG.warning(dedent(f"""
-    Failed to find tract for {latlng}.
-    """))
+    LOG.warning(f"Failed to find tract for {latlng}.")
     return None
 
 def load_geojson(geojson_filename):
