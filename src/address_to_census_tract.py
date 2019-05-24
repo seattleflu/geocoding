@@ -58,8 +58,9 @@ CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
 @click.option('-o', '--output', default=None, help='Name of output file')
     # TODO validate output extension?
     # TODO allow users to enter csv and return json? and vice versa
+@click.option('--invalidate_cache', is_flag=True, help='Invalidate cached responses?')
 
-def address_to_census_tract(filepath, institute, output, **kwargs):
+def address_to_census_tract(filepath, institute, output, invalidate_cache, **kwargs):
     """
     Given a *filepath* to a JSON, CSV, or Excel file (XLSX or XLS), de-identifies
     addresses contained within the data by converting them to census tracts and
@@ -93,9 +94,9 @@ def address_to_census_tract(filepath, institute, output, **kwargs):
         LOG.info(f"Using «{institute}» institutional configuration.")
 
     if filepath.endswith('.json'):
-        process_json(filepath, output, address_map)
+        process_json(filepath, output, address_map, invalidate_cache)
     elif filepath.endswith(('.csv', '.xlsx', '.xls')):
-        process_csv_or_excel(filepath, output, address_map)
+        process_csv_or_excel(filepath, output, address_map, invalidate_cache)
     else:
         raise UnsupportedFileExtensionError(dedent(f"""
         Unsupported file extension for file «{filepath}».
@@ -106,7 +107,8 @@ def address_to_census_tract(filepath, institute, output, **kwargs):
             * .json
     """))
 
-def process_json(file_path: str, output: str, address_map: dict):
+def process_json(file_path: str, output: str, address_map: dict,
+                 invalidate_cache: bool):
     """
     Given a *file_path* to a JSON file, processes the relevant keys containing
     address data (from *address_map*) and generates an extra key for census
@@ -120,6 +122,8 @@ def process_json(file_path: str, output: str, address_map: dict):
 
     Dumps the generated JSON data to stdout unless an *output* file path is
     given.
+
+    TODO docstring invalidate_cache
     """
 
     with open(file_path, encoding = "UTF-8") as file:
@@ -130,7 +134,8 @@ def process_json(file_path: str, output: str, address_map: dict):
 
     to_save = []
     for record in data:
-        result = process_json_record(record, address_map, tracts, cache)
+        result = process_json_record(record, address_map, tracts, cache,
+                                     invalidate_cache)
 
         if output:
             to_save.append(result)
@@ -142,7 +147,8 @@ def process_json(file_path: str, output: str, address_map: dict):
     if output:
         json.dump(to_save, open(output, mode='w'))
 
-def process_csv_or_excel(file_path: str, output: str, address_map: dict):
+def process_csv_or_excel(file_path: str, output: str, address_map: dict,
+                         invalidate_cache: bool):
     """
     Given a *file_path* to a CSV or Excel file, processes the relevant columns
     containing address data (from *address_map*) and generates an extra column
@@ -154,6 +160,8 @@ def process_csv_or_excel(file_path: str, output: str, address_map: dict):
 
     To minimize costs, an address should only be looked up once (via
     `lookup_address()`).
+
+    # TODO docstring invalidate_cache
     """
     df = load_csv_or_excel(file_path)
     tracts = load_geojson("data/geojsons/Washington_2016.geojson")
@@ -162,7 +170,7 @@ def process_csv_or_excel(file_path: str, output: str, address_map: dict):
     address = address_data_csv_or_excel(df, address_map)
     address['std_address'] = address.apply(lambda x: standardize_address(x, address_map))
 
-    response = geocode_address_csv_or_excel(address, cache)
+    response = geocode_address_csv_or_excel(address, cache, invalidate_cache)
 
     response.apply(lambda x: save_to_cache(x['std_address'], x['response'], cache), axis=1)
 
@@ -174,7 +182,7 @@ def process_csv_or_excel(file_path: str, output: str, address_map: dict):
     save_cache(cache)
 
 def process_json_record(record: dict, address_map: dict, tracts,
-                        cache: TTLCache) -> dict:
+                        cache: TTLCache, invalidate_cache: bool) -> dict:
     """
     Given a *record* from a JSON file,
     TODO docstring
@@ -183,7 +191,9 @@ def process_json_record(record: dict, address_map: dict, tracts,
     LOG.info(f"Currently geocoding address {address}.")
 
     std_address = standardize_address(address, address_map)
-    response = check_cache(std_address, cache)
+    response = None
+    if not invalidate_cache:
+        response = check_cache(std_address, cache)
     response = geocode_uncached_address(response, std_address)
     save_to_cache(std_address, response, cache)
 
@@ -253,18 +263,19 @@ def address_data_csv_or_excel(df: pd.DataFrame, address_map: dict) -> pd.Series:
 
     return pd.Series(address_data.to_dict(orient='records'))
 
-def geocode_address_csv_or_excel(address: pd.DataFrame, cache: TTLCache) -> pd.DataFrame:
+def geocode_address_csv_or_excel(address: pd.DataFrame, cache: TTLCache,
+                                 invalidate_cache: bool) -> pd.DataFrame:
     """
-    TODO
+    # Check in cache first
+    # Look up those not in cache
     """
     response = pd.DataFrame()
+    response['response'] = None
     response['std_address'] = address['std_address']
 
+    if not invalidate_cache:
+        response['response'] = response['std_address'].apply(lambda x: check_cache(x, cache))
 
-    # Check in cache first
-    response['response'] = response['std_address'].apply(lambda x: check_cache(x, cache))
-
-    # Look up those not in cache
     response['response'] = response.apply(lambda x:
         geocode_uncached_address(x['response'], x['std_address']), axis=1)
 
