@@ -215,7 +215,7 @@ def census_tract_json_record(response: dict, tracts) -> str:
     tract from the given *tracts* file of polygons
     """
     if not response or not (response['lat'] or response['lng']):
-        LOG.warning(dedent(f"""Failed to geocode address."""))
+        LOG.warning("Failed to geocode address.")
         return
 
     latlng = [response['lat'], response['lng']]
@@ -339,9 +339,7 @@ def check_cache(address: dict, cache: TTLCache) -> dict:
         try:
             return cache[json.dumps(address)]
         except KeyError:
-            LOG.warning("""
-            Cache item not found
-            """)
+            LOG.warning("Item not found in cache.")
             pass
 
 def save_to_cache(standardized_address: dict, response: dict, cache: TTLCache):
@@ -366,6 +364,8 @@ def lookup_address(address: dict) -> dict:
     broken into pieces (street, city, zipcode, etc.) or is a free text lookup
     (and only the `street` parameter is used).
     """
+    LOG.info(dedent("""Pinging SmartyStreets geocoding API
+    """))
     client = smartystreets_client_builder().build_us_street_api_client()
     result = None
 
@@ -443,6 +443,8 @@ def extract_address(address: dict):
     Note that this API is not consistent with the US Street API, and the lookup
     and responses must be handled differently.
     """
+    LOG.warning("Previous lookup failed. Looking up address as free text.")
+
     client = smartystreets_client_builder().build_us_extract_api_client()
     address_text = ', '.join([ str(val) for val in list(address.values()) if val ])
 
