@@ -4,7 +4,8 @@ channels:
 - bioconda
 - defaults
 dependencies:
-- geocoder
 - shapely
 - python=3.6*
 - snakemake
+- pandas
+- xlrd

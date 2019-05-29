@@ -1,11 +1,11 @@
 # Geocoding addresses into 2016 Census tracts
 
-`address_to_census_tract.py` prototypes address to Census tract conversion.  It uses a two-step process:
+`src/deidentify/address_to_census_tract.py` prototypes address to Census tract conversion.  It uses a two-step process:
 
 1. Geocode a given single-line address to a (latitude, longitude) pair using a
    remote (forward) geocoding service.
-   
-   In the prototype, we're using Google's service, but this is swappable.  The
+
+   We're currently using SmartyStreets' service, but this is swappable.  The
    important point is the quality and robustness of the geocoding given dirty
    data.  Even rough geocoding results can be useful though, as Census tracts
    are fairly large.  I believe that as long as we submit addresses free of
@@ -29,6 +29,11 @@ though it can go directly to a Census tract, because its address coverage
 isn't great and it is not robust to bad addresses. As noted by the Census' own
 documentation, this is especially for business addresses, which we will be
 collecting as places of work.
+
+**Need help?** Try running
+```sh
+src/deidentify/address_to_census_tract.py --help
+```
 
 ## Data
 
@@ -56,3 +61,26 @@ Stored in the `data/` directory.
 
   These are not checked into version control and must be converted locally by
   running `snakemake geojsons`.  `ogr2ogr` must be installed.
+
+## Development
+
+If you have [conda] installed, then simply install the project dependencies using
+`conda env create -f geocoding_env_conda.yaml`. There is one additional
+requirement not available through conda that needs to be installed. While
+inside of your `geocoding` conda environment, please run
+`pip install smartystreets-python-sdk`.
+
+To use SmartyStreet's geocoding service, users must add an authentication key
+and token as environment variables. Authentication keys are provided to users
+who [register at their website][SmartyStreets]. Collaborators in the Seattle Flu
+Study can request authentication keys from Thomas.
+
+You can either [add persistent environment variables to your conda environment] or declare
+environment variables at the command line via:
+    `export SMARTYSTREETS_AUTH_ID='UNIQUE_AUTHENTICATION_ID'`
+    `export SMARTYSTREETS_AUTH_TOKEN='UNIQUE_AUTHENTICATION_TOKEN'`
+
+[conda]: https://conda.io/en/latest/
+[add persistent environment variables to your conda environment]:
+https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#saving-environment-variables
+[SmartyStreets]: http://smartystreets.com
