@@ -383,7 +383,7 @@ def load_or_create_cache() -> TTLCache:
     try:
         cache = pickle.load(open('cache.pickle', mode='rb'))
     except FileNotFoundError:
-        LOG.info("Couldn't find an existing cache file. Creating new cache.")
+        LOG.warning("Couldn't find an existing cache file. Creating new cache.")
         cache = TTLCache(maxsize=100000, ttl=CACHE_TTL)
     return cache
 
@@ -399,6 +399,8 @@ def check_cache(address: dict, cache: TTLCache) -> dict:
         except KeyError:
             LOG.warning("Item not found in cache.")
             pass
+    else:
+        LOG.warning("Cache does not exist or is empty.")
 
 def save_to_cache(standardized_address: dict, response: dict, cache: TTLCache):
     """
