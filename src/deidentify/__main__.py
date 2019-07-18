@@ -11,7 +11,7 @@ import click
     help='Name of output file. Defaults to None, printing results to stdout.')
     # TODO validate output extension?
     # TODO allow users to enter csv and return json? and vice versa
-@click.option('--invalidate_cache', is_flag=True,
+@click.option('--invalidate-cache', is_flag=True,
     help='Optional flag for invalidating cached responses')
 
 def deidentify(filepath, institute, output, invalidate_cache):
