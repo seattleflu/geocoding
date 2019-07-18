@@ -157,7 +157,7 @@ def process_json(filepath: str, output: str, address_map: dict,
         if output:
             to_save.append(result)
         else:
-            print(json.dumps(result))
+            print(json.dumps(result, sort_keys=True))
 
     save_cache(cache)
 
@@ -395,7 +395,7 @@ def check_cache(address: dict, cache: TTLCache) -> dict:
     """
     if cache:
         try:
-            return cache[json.dumps(address)]
+            return cache[json.dumps(address, sort_keys=True)]
         except KeyError:
             LOG.warning("Item not found in cache.")
             pass
@@ -409,7 +409,7 @@ def save_to_cache(standardized_address: dict, response: dict, cache: TTLCache):
     overwriting the value for the existing *standardized_address* key if it
     already existed in the *cache*.
     """
-    cache[json.dumps(standardized_address)] = response
+    cache[json.dumps(standardized_address, sort_keys=True)] = response
 
 def save_cache(cache: TTLCache):
     """ Given a *cache*, saves it to a hard-coded file `cache.pickle`. """
