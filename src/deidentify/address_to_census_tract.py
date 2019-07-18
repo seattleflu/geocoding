@@ -21,19 +21,19 @@ Requirements:
     xlrd (pandas Excel compatibility)
     smartystreets_python_sdk
 """
-import json
 import os
-from textwrap import dedent
-from shapely.geometry import shape, Point
+import json
+import click
+import config
+import pickle
 import logging
 import pandas as pd
+from textwrap import dedent
+from cachetools import TTLCache
+from shapely.geometry import shape, Point
 from smartystreets_python_sdk import StaticCredentials, exceptions, ClientBuilder
 from smartystreets_python_sdk.us_street import Lookup
 from smartystreets_python_sdk.us_extract import Lookup as ExtractLookup
-import config
-import click
-import pickle
-from cachetools import TTLCache
 
 LOG = logging.getLogger(__name__)
 CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks

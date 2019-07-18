@@ -1,6 +1,6 @@
-from address_to_census_tract import address_to_census_tract_inner
-from pii_deidentifier import pii_deidentifier_inner
 import click
+from pii_deidentifier import pii_deidentifier_inner
+from address_to_census_tract import address_to_census_tract_inner
 
 
 @click.command()

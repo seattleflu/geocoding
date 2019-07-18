@@ -2,14 +2,14 @@
 """
 
 """
-import json
 import os
+import re
+import json
 import click
+import config
+import hashlib
 import logging
 import pandas as pd
-import config
-import re
-import hashlib
 
 LOG = logging.getLogger(__name__)
 
