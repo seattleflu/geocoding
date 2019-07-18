@@ -64,7 +64,7 @@ Stored in the `data/` directory.
 
 ## Development
 
-If you have [conda] installed, then simply install the project dependencies using
+If you have [conda] installed, then install the project dependencies using
 `conda env create -f geocoding_env_conda.yaml`. There is one additional
 requirement not available through conda that needs to be installed. While
 inside of your `geocoding` conda environment, please run
@@ -77,10 +77,28 @@ Study can request authentication keys from Thomas.
 
 You can either [add persistent environment variables to your conda environment] or declare
 environment variables at the command line via:
-    `export SMARTYSTREETS_AUTH_ID='UNIQUE_AUTHENTICATION_ID'`
-    `export SMARTYSTREETS_AUTH_TOKEN='UNIQUE_AUTHENTICATION_TOKEN'`
+
+        export SMARTYSTREETS_AUTH_ID='UNIQUE_AUTHENTICATION_ID'
+        export SMARTYSTREETS_AUTH_TOKEN='UNIQUE_AUTHENTICATION_TOKEN'
+
+### Dummy data
+During development, you may choose to use fake data stored in the `data/test`
+directory for testing purposes.
+
+* `pii_testset.csv` contains generated, personally-identifiable information from
+  the API mocking tool [Mockaroo].
+
+* `testset.json` contains ten addresses across Seattle in `ndjson` format that
+  should all produce census tracts. If you cannot get the `geocoding` program to
+  generate census tracts with this dataset, then there is something wrong with
+  your install.
+
+* `testset.csv` contains the same information as `testset.json` but in `csv`
+  format for the `csv` workflow.
+  
 
 [conda]: https://conda.io/en/latest/
 [add persistent environment variables to your conda environment]:
 https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#saving-environment-variables
 [SmartyStreets]: http://smartystreets.com
+[Mockaroo]: http://www.mockaroo.com
