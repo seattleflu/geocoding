@@ -196,7 +196,9 @@ def process_csv_or_excel(filepath: str, output: str, address_map: dict,
 
     # Drop identifiable address columns
     drop_columns = list(address_map.values())
-    keep_zipcode and drop_columns.remove(address_map['zipcode'])
+
+    if keep_zipcode:
+        drop_columns.remove(address_map['zipcode'])
 
     df = df[[ col for col in list(df) if col not in drop_columns ]]
     df['census_tract'] = census_tract_csv_or_excel(response, tracts)
