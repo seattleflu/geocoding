@@ -362,7 +362,10 @@ def dump_csv_or_excel(df: pd.DataFrame, output: str):
     Given a DataFrame *df*, prints it to a given *output* filename. If *output*
     is empty, prints *df* to stdout.
     """
-    df.to_csv(output, index=False) if output else print(df.to_csv(index=False))
+    if output:
+        df.to_csv(output, index=False)
+    else:
+        print(df.to_csv(index=False))
 
 def smartystreets_client_builder():
     """
