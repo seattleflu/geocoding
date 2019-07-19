@@ -352,8 +352,8 @@ def census_tract_csv_or_excel(response: pd.DataFrame, tracts) -> pd.Series:
     Extract lat/lng from *response* DataFrame and return a pd.Series containing
     the affiliated census tract from the given *tracts* file of polygons.
     """
-    lat = response['response'].apply(lambda x: x['lat'] if 'lat' in x else None)
-    lng = response['response'].apply(lambda x: x['lng'] if 'lng' in x else None)
+    lat = response['response'].apply(lambda x: x.get('lat', None))
+    lng = response['response'].apply(lambda x: x.get('lng', None))
     latlng = pd.Series(list(zip(lat, lng)))
     return latlng.apply(lambda x: latlng_to_polygon(x, tracts))
 
