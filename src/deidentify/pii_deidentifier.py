@@ -2,20 +2,20 @@
 """
 
 """
-import json
 import os
-import click
-import logging
-import pandas as pd 
-import config
 import re
+import json
+import click
+import config
 import hashlib
+import logging
+import pandas as pd
 
 LOG = logging.getLogger(__name__)
 
 @click.command()
 @click.argument('filepath', required=True, type=click.Path(exists=True))
-@click.option('-i', '--institute', type=click.Choice(['uw', 'sch', 'default']), 
+@click.option('-i', '--institute', type=click.Choice(['uw', 'sch', 'default']),
     default='default', help='The acronym representing the institution.')
 @click.option('-n', '--name', default=None, help='')
 @click.option('-d', '--dob', default=None, help='')
@@ -30,13 +30,13 @@ def pii_deidentifier_inner(filepath, institute, **kwargs):
     df = pd.read_csv(filepath)
     pii_map = config.PII_CONFIG[institute.lower()]
     print(pii_map)
-    
+
     # TODO make this part a function (copied from address_to_..)
     # Subset to address-relevant columns (from config) and store separately
     pii_columns = [ col for col in df.columns if col in pii_map.values() ]
     if not pii_columns:
-        pass 
-        #raise NoPIIDataFoundError(df.columns(), pii_map)  
+        pass
+        #raise NoPIIDataFoundError(df.columns(), pii_map)
     pii_data = df[pii_columns]
     pii = pd.Series(pii_data.to_dict(orient='records'))
     print(pii)
@@ -60,15 +60,15 @@ def generate_hash(pii: dict):
 
 def standardize_pii(pii: dict, api_map: dict) -> dict:
     """
-    TODO the bottom part can be done in a loop 
-    Raises a KeyError if a mapped key from *api_map* does not exist in 
+    TODO the bottom part can be done in a loop
+    Raises a KeyError if a mapped key from *api_map* does not exist in
     *pii*.
     """
     if not set(pii.keys()).issubset(api_map.values()):
         #raise PIITranslationNotFoundError(pii.keys(), api_map)
-        pass 
+        pass
     for key in pii:
-        pii[key] = str(pii[key]).upper().strip() 
+        pii[key] = str(pii[key]).upper().strip()
 
     # TODO
     return {

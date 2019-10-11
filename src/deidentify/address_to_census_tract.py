@@ -21,19 +21,19 @@ Requirements:
     xlrd (pandas Excel compatibility)
     smartystreets_python_sdk
 """
-import json
 import os
-from textwrap import dedent
-from shapely.geometry import shape, Point
+import json
+import click
+import config
+import pickle
 import logging
 import pandas as pd
+from textwrap import dedent
+from cachetools import TTLCache
+from shapely.geometry import shape, Point
 from smartystreets_python_sdk import StaticCredentials, exceptions, ClientBuilder
 from smartystreets_python_sdk.us_street import Lookup
 from smartystreets_python_sdk.us_extract import Lookup as ExtractLookup
-import config
-import click
-import pickle
-from cachetools import TTLCache
 
 LOG = logging.getLogger(__name__)
 CACHE_TTL = 60 * 60 * 24 * 28  # 4 weeks
@@ -157,7 +157,7 @@ def process_json(filepath: str, output: str, address_map: dict,
         if output:
             to_save.append(result)
         else:
-            print(json.dumps(result))
+            print(json.dumps(result, sort_keys=True))
 
     save_cache(cache)
 
@@ -196,7 +196,9 @@ def process_csv_or_excel(filepath: str, output: str, address_map: dict,
 
     # Drop identifiable address columns
     drop_columns = list(address_map.values())
-    keep_zipcode and drop_columns.remove(address_map['zipcode'])
+
+    if keep_zipcode:
+        drop_columns.remove(address_map['zipcode'])
 
     df = df[[ col for col in list(df) if col not in drop_columns ]]
     df['census_tract'] = census_tract_csv_or_excel(response, tracts)
@@ -352,8 +354,8 @@ def census_tract_csv_or_excel(response: pd.DataFrame, tracts) -> pd.Series:
     Extract lat/lng from *response* DataFrame and return a pd.Series containing
     the affiliated census tract from the given *tracts* file of polygons.
     """
-    lat = response['response'].apply(lambda x: x['lat'] if 'lat' in x else None)
-    lng = response['response'].apply(lambda x: x['lng'] if 'lng' in x else None)
+    lat = response['response'].apply(lambda x: x.get('lat', None))
+    lng = response['response'].apply(lambda x: x.get('lng', None))
     latlng = pd.Series(list(zip(lat, lng)))
     return latlng.apply(lambda x: latlng_to_polygon(x, tracts))
 
@@ -362,7 +364,10 @@ def dump_csv_or_excel(df: pd.DataFrame, output: str):
     Given a DataFrame *df*, prints it to a given *output* filename. If *output*
     is empty, prints *df* to stdout.
     """
-    df.to_csv(output, index=False) if output else print(df.to_csv(index=False))
+    if output:
+        df.to_csv(output, index=False)
+    else:
+        print(df.to_csv(index=False))
 
 def smartystreets_client_builder():
     """
@@ -395,7 +400,7 @@ def check_cache(address: dict, cache: TTLCache) -> dict:
     """
     if cache:
         try:
-            return cache[json.dumps(address)]
+            return cache[json.dumps(address, sort_keys=True)]
         except KeyError:
             LOG.warning("Item not found in cache.")
             pass
@@ -409,7 +414,7 @@ def save_to_cache(standardized_address: dict, response: dict, cache: TTLCache):
     overwriting the value for the existing *standardized_address* key if it
     already existed in the *cache*.
     """
-    cache[json.dumps(standardized_address)] = response
+    cache[json.dumps(standardized_address, sort_keys=True)] = response
 
 def save_cache(cache: TTLCache):
     """ Given a *cache*, saves it to a hard-coded file `cache.pickle`. """
